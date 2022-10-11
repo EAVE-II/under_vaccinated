@@ -300,8 +300,9 @@ df_cohort = ever_shielding %>%
   right_join(df_cohort) %>%
   mutate(shielding = replace_na(shielding, 0))
 
-# Add vaccination status on study__start
-df_cohort = mutate(df_cohort, vs = case_when( date_vacc_4 <= study_start ~ paste0('v4_', vacc_type_4),
+# Add most recent vaccine status on study__start
+df_cohort = mutate(df_cohort, vs = case_when( date_vacc_5 <= study_start ~ paste0('v5_', vacc_type_5),
+                                              date_vacc_4 <= study_start ~ paste0('v4_', vacc_type_4),
                                               date_vacc_3 <= study_start ~ paste0('v3_', vacc_type_3),
                                               date_vacc_2 <= study_start ~ paste0('v2_', vacc_type_2),
                                               date_vacc_1 <= study_start ~ paste0('v1_', vacc_type_1), 
