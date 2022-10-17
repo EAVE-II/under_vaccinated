@@ -1,30 +1,31 @@
 "variable","coef"
-"SexM",0.281316424858549
-"age_gp16-75",1.02983066715927
-"age_gp75+",2.18583260278884
-"ur6_2016_nameOther Urban Areas",0.0187831513880567
-"ur6_2016_nameAccessible Small Towns",0.0206653825685947
-"ur6_2016_nameRemote Small Towns",-0.0926659198224606
-"ur6_2016_nameAccessible Rural",0.00399409254446146
-"ur6_2016_nameRemote Rural",-0.322650850299879
-"simd2020_sc_quintile2",-0.164483880336277
-"simd2020_sc_quintile3",-0.166159243616959
-"simd2020_sc_quintile4",-0.286367982216408
-"simd2020_sc_quintile5",-0.502716671573064
-"n_risk_gps1",0.96295738212093
-"n_risk_gps2",1.4602767089271
-"n_risk_gps3-4",1.75615861185329
-"n_risk_gps5+",1.90222465810725
-"last_positive_test_group0-13_weeks",-2.40975982849788
-"last_positive_test_group14-26_weeks",-4.3662997432218
-"last_positive_test_group27+_weeks",-3.62919749938861
-"shielding",0.385627844072397
-"num_tests_6m_group1",4.52079844794764
-"num_tests_6m_group2",5.09736936105074
-"num_tests_6m_group3",5.5046509367789
-"num_tests_6m_group4-9",5.88225478946495
-"num_tests_6m_group10+",5.6374633268903
-"vaccine_deficit1",0.551037849427184
-"vaccine_deficit2",1.0354954974035
-"vaccine_deficit3",0.855041641347351
-"vaccine_deficit4",1.47557571359848
+"SexM",-0.281528133717681
+"age_gp_212-15",-0.150079222569222
+"ur6_2016_nameOther Urban Areas",-1.65359288702104
+"ur6_2016_nameAccessible Small Towns",-1.75482167218833
+"ur6_2016_nameRemote Small Towns",0.169243271561708
+"ur6_2016_nameAccessible Rural",-1.67723532816056
+"ur6_2016_nameRemote Rural",1.5693349710272
+"simd2020_sc_quintile2",-0.773539334134827
+"simd2020_sc_quintile3",0.37436530980073
+"simd2020_sc_quintile4",0.691016161409772
+"simd2020_sc_quintile5",-0.164910424085849
+"n_risk_gps1",-0.922518898622138
+"n_risk_gps2",0.147856995833956
+"n_risk_gps3-4",-6.83080639545734
+"n_risk_gps5+",1.34416377085836
+"last_positive_test_group0-13_weeks",-14.7607764541713
+"last_positive_test_group14-26_weeks",-15.0410259046221
+"last_positive_test_group27+_weeks",-4.94395860965918
+"shielding",0.984241697092839
+"num_tests_6m_group1",7.78154745245079
+"num_tests_6m_group2",8.29213744038587
+"num_tests_6m_group3",7.74237487260545
+"num_tests_6m_group4-9",7.70357681907707
+"num_tests_6m_group10+",6.82383863009055
+"covid_hosp_ever",21.0635921346655
+"num_doses_time1",0.118540862676301
+"num_doses_time2",-0.209663901858334
+"num_doses_time3",3.99384762403761
+"num_doses_time4",-1.93252077023365
+"num_doses_time5",10.6942732292557

@@ -1,0 +1,17 @@
+"variable","coef"
+"(Intercept)",-5.39643127581272
+"SexM",-0.0229707063619998
+"age_gp_212-15",3.48768863669476
+"ur6_2016_nameOther Urban Areas",0.181744261837083
+"ur6_2016_nameAccessible Small Towns",0.160789584049394
+"ur6_2016_nameRemote Small Towns",0.173457659631809
+"ur6_2016_nameAccessible Rural",0.129999431761234
+"ur6_2016_nameRemote Rural",0.136822689161404
+"simd2020_sc_quintile2",0.253406844283653
+"simd2020_sc_quintile3",0.460365879201817
+"simd2020_sc_quintile4",0.641893381687256
+"simd2020_sc_quintile5",0.85165302501463
+"n_risk_gps1",0.554154894492996
+"n_risk_gps2",1.06958595394826
+"n_risk_gps3-4",2.18405027039178
+"n_risk_gps5+",-3.94904813773794
