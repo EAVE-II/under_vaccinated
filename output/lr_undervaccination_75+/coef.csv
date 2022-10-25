@@ -1,16 +1,16 @@
 "variable","coef"
-"(Intercept)",-1.08396474717491
-"SexM",-0.0976295572897031
-"ur6_2016_nameOther Urban Areas",0.110329927080515
-"ur6_2016_nameAccessible Small Towns",0.145972958681563
-"ur6_2016_nameRemote Small Towns",0.040449060393206
-"ur6_2016_nameAccessible Rural",0.164665144900548
-"ur6_2016_nameRemote Rural",-0.0116821032326398
-"simd2020_sc_quintile2",0.229176581264352
-"simd2020_sc_quintile3",0.355156725227306
-"simd2020_sc_quintile4",0.505789696660472
-"simd2020_sc_quintile5",0.682572113363965
-"n_risk_gps1",1.53434762646354
-"n_risk_gps2",1.64328609352918
-"n_risk_gps3-4",1.65289779474574
-"n_risk_gps5+",1.53975739395381
+"(Intercept)",-1.08400129397245
+"SexM",-0.0976135297124608
+"ur6_2016_nameOther Urban Areas",0.110344928878097
+"ur6_2016_nameAccessible Small Towns",0.145965916867214
+"ur6_2016_nameRemote Small Towns",0.0404421855604932
+"ur6_2016_nameAccessible Rural",0.164657717817821
+"ur6_2016_nameRemote Rural",-0.011493810360214
+"simd2020_sc_quintile2",0.229173876424915
+"simd2020_sc_quintile3",0.355170092112203
+"simd2020_sc_quintile4",0.505841554400961
+"simd2020_sc_quintile5",0.682579026110779
+"n_risk_gps1",1.53437328649648
+"n_risk_gps2",1.64332164128467
+"n_risk_gps3-4",1.65289644561652
+"n_risk_gps5+",1.53996974841329

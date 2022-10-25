@@ -1,30 +1,30 @@
 "variable","coef"
-"SexM",0.139513378060206
-"ur6_2016_nameOther Urban Areas",0.207295229859003
-"ur6_2016_nameAccessible Small Towns",0.170465136509761
-"ur6_2016_nameRemote Small Towns",0.125710031557806
-"ur6_2016_nameAccessible Rural",0.19201207352091
-"ur6_2016_nameRemote Rural",0.0628269468998516
-"simd2020_sc_quintile2",-0.190592419112237
-"simd2020_sc_quintile3",0.00704055616564313
-"simd2020_sc_quintile4",-0.160326088987752
-"simd2020_sc_quintile5",-0.165748368179613
-"n_risk_gps1",0.200133460810353
-"n_risk_gps2",0.183959185406333
-"n_risk_gps3-4",0.313956209822761
-"n_risk_gps5+",0.382614315419511
-"last_positive_test_group0-13_weeks",-4.15301436416583
-"last_positive_test_group14-26_weeks",-5.26999376153567
-"last_positive_test_group27+_weeks",-6.9165048149025
-"shielding",-0.445113569991954
-"num_tests_6m_group1",3.56157340595966
-"num_tests_6m_group2",3.69604907018512
-"num_tests_6m_group3",3.85998118097738
-"num_tests_6m_group4-9",3.66167867868138
-"num_tests_6m_group10+",3.49087183126871
-"covid_hosp_ever",6.04516973335355
-"num_doses_time1",0.368189009534062
-"num_doses_time2",0.180838582730064
-"num_doses_time3",0.0840028441082701
-"num_doses_time4",-0.144312889199692
-"num_doses_time5",0.325746392798361
+"SexM",0.127653810081751
+"ur6_2016_nameOther Urban Areas",0.180601734027023
+"ur6_2016_nameAccessible Small Towns",0.168122144616859
+"ur6_2016_nameRemote Small Towns",0.122236256952208
+"ur6_2016_nameAccessible Rural",0.172404459494186
+"ur6_2016_nameRemote Rural",0.0182898465487668
+"simd2020_sc_quintile2",-0.207309917357636
+"simd2020_sc_quintile3",-0.00962529616957481
+"simd2020_sc_quintile4",-0.159007576426137
+"simd2020_sc_quintile5",-0.156195451942892
+"n_risk_gps1",0.156306404219798
+"n_risk_gps2",0.124661751087251
+"n_risk_gps3-4",0.251932565145738
+"n_risk_gps5+",0.278378523527697
+"last_positive_test_group0-13_weeks",-4.21694409588559
+"last_positive_test_group14-26_weeks",-5.05423420177657
+"last_positive_test_group27+_weeks",-6.51789694373433
+"shielding",-0.291163500482655
+"num_tests_6m_group1",3.59273931687692
+"num_tests_6m_group2",3.69230763314416
+"num_tests_6m_group3",3.83999964569397
+"num_tests_6m_group4-9",3.69961288095975
+"num_tests_6m_group10+",3.53533939501949
+"covid_hosp_ever",6.0263456859998
+"num_doses_time1",0.384121376909926
+"num_doses_time2",0.118198436546781
+"num_doses_time3",0.0483841243146747
+"num_doses_time4",-0.137045361713554
+"num_doses_time5",-0.0507349946480236

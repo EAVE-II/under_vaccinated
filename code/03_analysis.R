@@ -138,7 +138,8 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
         tstop = tstop - offset
       ) %>%
       select(-offset) %>%
-      ungroup()
+      ungroup() %>%
+      droplevels()
   ) %>%
     tidy() %>%
     mutate(
@@ -165,7 +166,7 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
   model = coxph(formula, data = df_survival)
 
   # Results table
-  write.csv(create_cox_results_table(df_cohort, model, ind_vars), paste0(dir, "/results_table.csv"), row.names = FALSE)
+  write.csv(create_cox_results_table(df_survival, model, ind_vars), paste0(dir, "/results_table.csv"), row.names = FALSE)
 
   # Coefficients
   coef = data.frame("variable" = names(coef(model)), "coef" = coef(model), row.names = 1:length(coef(model)))
@@ -262,10 +263,11 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
 
 # Creates a summary table of Cox model results, with number of events,
 # person years and hazard ratios
-create_cox_results_table = function(df_cohort, model, ind_vars) {
+create_cox_results_table = function(df_survival, model, ind_vars) {
   person_years = data.frame()
 
   for (var in ind_vars) {
+
     formula = as.formula(paste0("Surv(duration, event) ~ ", var))
 
     person_years = bind_rows(
@@ -277,20 +279,19 @@ create_cox_results_table = function(df_cohort, model, ind_vars) {
       )$data %>%
         mutate(Variable = var) %>%
         rename(Levels = !!sym(var)) %>%
-        mutate(Levels = as.character(Levels))
+        mutate(Levels = as.character(Levels),
+               HR = case_when( Levels == as.character(levels( as.factor(pull(df_survival, !!sym(var))))[1])  ~ 'Ref',
+               TRUE ~ NA_character_))
+
     )
   }
 
   person_years =
     # Event rates are per thousand years
-    mutate(person_years, pyears = pyears / (365.25 * 1000)) %>%
-    mutate(
-      rate = round(event / pyears, 0),
-      pyears = round(pyears, 0),
-      term = paste0(Variable, Levels),
-      event_rate = paste0(event, " (", rate, ")")
+    mutate(person_years, pyears = pyears / (365.25 * 1000),
+      term = paste0(Variable, Levels)
     ) %>%
-    select(Variable, Levels, pyears, n, event, rate, event_rate, term)
+    select(Variable, Levels, pyears, n, event, term, HR)
 
   cox_results = tidy(model) %>%
     filter(!grepl("calendar", term)) %>%
@@ -302,22 +303,22 @@ create_cox_results_table = function(df_cohort, model, ind_vars) {
     mutate_if(is.numeric, ~ formatC(round(exp(.), 2), format = "f", big.mark = ",", drop0trailing = TRUE)) %>%
     mutate(estimate = paste0(estimate, " (", lcl, ", ", ucl, ")")) %>%
     select(-lcl, -ucl) %>%
-    rename(HR = estimate)
+    rename(HR = estimate) %>%
+    data.frame()
 
-  results_table = left_join(person_years, cox_results) %>%
-    select(-term) %>%
+  results_table = left_join(person_years, cox_results, by = 'term') %>%
     mutate(
-      HR = replace_na(HR, "Ref"),
+      HR = coalesce(HR.x, HR.y),
+      #HR = replace_na(HR, "Ref"),
       Variable = names_map[Variable],
       Variable = case_when(
         !duplicated(Variable) ~ Variable,
         TRUE ~ ""
       )
     ) %>%
+    select(-term, -HR.x, -HR.y) %>%
     rename(
       `Number of events` = event,
-      `Number of events (rate per 1,000 person years)` = event_rate,
-      `Event rate per 1,000 years` = rate,
       `Hazard rate` = HR,
       `Persons` = n,
       `Person years (thousands)` = pyears
@@ -420,7 +421,7 @@ cox_analysis(df_cohort,
 
 
 #### Tests
-# 
+
 # df_cohort = df_cohort %>%
 #   filter(age_gp == "16-74")
 # df_cohort = filter(df_cohort, EAVE_LINKNO %in% sample(df_cohort$EAVE_LINKNO, 10000)) %>%
@@ -430,7 +431,7 @@ cox_analysis(df_cohort,
 #   event_col = "covid_hosp_death", calendar_days = 0, study_start = study_start, study_end = study_end
 # )
 # 
-# # Check everything is kosher - bob is indeed one's uncle
+# # Check everything is kosher - verify that bob is indeed one's uncle
 # bob = select(
 #   df_survival, EAVE_LINKNO, age_gp, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
 #   vacc_type_1, vacc_type_2, vacc_type_3, vacc_type_4, vacc_type_5,
