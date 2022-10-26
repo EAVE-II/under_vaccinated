@@ -15,17 +15,19 @@ setwd("/conf/EAVE/GPanalysis/analyses/under_vaccinated")
 # source('./code/01_data_setup.R')
 
 # Create output directory
-output_dir = "./output/"
+output_dir ="./output/"
 if (!dir.exists(output_dir)) {
   dir.create(output_dir)
 }
 
+# List of QCovid risk group variable names
+rgs =setdiff(q_names, c("Q_BMI", "Q_ETHNICITY"))
 
-rgs = setdiff(q_names, c("Q_BMI", "Q_ETHNICITY"))
-bin_vars = setdiff(rgs, c("Q_HOME_CAT", "Q_LEARN_CAT", "Q_DIAG_CKD_LEVEL"))
+# List of binary variables that will appear in summary tables
+bin_vars =setdiff(rgs, c("Q_HOME_CAT", "Q_LEARN_CAT", "Q_DIAG_CKD_LEVEL"))
 
 # Names of variables that will be displayed in table
-var_names = c(
+var_names =c(
   "Total N (%)",
   "Sex",
   "ageYear",
@@ -41,8 +43,8 @@ var_names = c(
   rgs
 )
 
-# Display names for table qcovid groups
-q_display_names = c(
+# Display names for Qcovid groups in the table
+q_display_names =c(
   "Housing category",
   "Learning disability/Down's syndrome",
   "Chronic Kidney Disease",
@@ -75,8 +77,8 @@ q_display_names = c(
   "Venous thromboembolism"
 )
 
-# Display names for table characteristics
-display_names = c(
+# All display names for the table
+display_names =c(
   "Total",
   "Sex",
   "Age",
@@ -93,20 +95,21 @@ display_names = c(
 )
 
 # This will be used for changing variables names to display names
-names_map = setNames(display_names, var_names)
+names_map =setNames(display_names, var_names)
 
-summary_tbl_wt_chrt = summary_factorlist(df_cohort %>%
-  mutate(fully_vaccinated = factor(fully_vaccinated,
-    labels = c("Under-vaccinated", "Fully-vaccinated")
-  )) %>%
-  # Put 1 as the first level, to make it easier to remove the level 0
-  # in the final table
-  mutate_at(bin_vars, ~ factor(., levels = c(1, 0))),
-dependent = "fully_vaccinated",
-explanatory = setdiff(var_names, "Total N (%)"),
-add_col_totals = TRUE,
-weights = "eave_weight",
-na_include = TRUE
+summary_tbl_wt_chrt =summary_factorlist(
+  df_cohort %>%
+    mutate(fully_vaccinated = factor(fully_vaccinated,
+      labels = c("Under-vaccinated", "Fully-vaccinated")
+    )) %>%
+    # Put 1 as the first level, to make it easier to remove the level 0
+    # in the final table
+    mutate_at(bin_vars, ~ factor(., levels = c(1, 0))),
+  dependent = "fully_vaccinated",
+  explanatory = setdiff(var_names, "Total N (%)"),
+  add_col_totals = TRUE,
+  weights = "eave_weight",
+  na_include = TRUE
 )
 
 
@@ -126,8 +129,8 @@ summary_tbl_wt_chrt = summary_tbl_wt_chrt %>%
   ))
 
 # Change to display names
-summary_tbl_wt_chrt$label = names_map[summary_tbl_wt_chrt$label]
-summary_tbl_wt_chrt$label = replace_na(summary_tbl_wt_chrt$label, "")
+summary_tbl_wt_chrt$label =names_map[summary_tbl_wt_chrt$label]
+summary_tbl_wt_chrt$label =replace_na(summary_tbl_wt_chrt$label, "")
 
 write.csv(summary_tbl_wt_chrt, paste0(output_dir, "/summary_table_weights_cohort.csv"), row.names = F)
 
@@ -174,24 +177,25 @@ write.csv(summary_tbl_wt_chrt, paste0(output_dir, "/summary_table_weights_cohort
 # Summary tables by age
 
 # 5-15
-summary_tbl_wt_chrt_5_15 = summary_factorlist(df_cohort %>%
-  filter(age_gp == "5-15") %>%
-  # Put 1 as the first level, to make it easier to remove the level 0
-  # in the final table
-  mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
-  droplevels(),
-dependent = "num_doses_start",
-explanatory = setdiff(var_names, c("Total N (%)", "age_gp")),
-add_col_totals = TRUE,
-weights = "eave_weight",
-na_include = TRUE
+summary_tbl_wt_chrt_5_15 =summary_factorlist(
+  df_cohort %>%
+    filter(age_gp == "5-15") %>%
+    # Put 1 as the first level, to make it easier to remove the level 0
+    # in the final table
+    mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
+    droplevels(),
+  dependent = "num_doses_start",
+  explanatory = setdiff(var_names, c("Total N (%)", "age_gp")),
+  add_col_totals = TRUE,
+  weights = "eave_weight",
+  na_include = TRUE
 )
 
 
 # Only display one level for binary variables
-summary_tbl_wt_chrt_5_15$label[summary_tbl_wt_chrt_5_15$label == ""] = NA
+summary_tbl_wt_chrt_5_15$label[summary_tbl_wt_chrt_5_15$label == ""] =NA
 
-summary_tbl_wt_chrt_5_15 = summary_tbl_wt_chrt_5_15 %>%
+summary_tbl_wt_chrt_5_15 =summary_tbl_wt_chrt_5_15 %>%
   mutate(label_dup = label) %>%
   mutate(label_dup = case_when(
     label_dup == "" ~ NA_character_,
@@ -207,8 +211,8 @@ summary_tbl_wt_chrt_5_15 = summary_tbl_wt_chrt_5_15 %>%
   ))
 
 # Change to display names
-summary_tbl_wt_chrt_5_15$label = names_map[summary_tbl_wt_chrt_5_15$label]
-summary_tbl_wt_chrt_5_15$label = replace_na(summary_tbl_wt_chrt_5_15$label, "")
+summary_tbl_wt_chrt_5_15$label =names_map[summary_tbl_wt_chrt_5_15$label]
+summary_tbl_wt_chrt_5_15$label =replace_na(summary_tbl_wt_chrt_5_15$label, "")
 
 write.csv(summary_tbl_wt_chrt_5_15, paste0(output_dir, "/summary_table_weights_cohort_5_15.csv"), row.names = F)
 
@@ -219,22 +223,23 @@ write.csv(summary_tbl_wt_chrt_5_15, paste0(output_dir, "/summary_table_weights_c
 
 
 # 16-74
-summary_tbl_wt_chrt_16_74 = summary_factorlist(df_cohort %>%
-  filter(age_gp == "16-74") %>%
-  # Put 1 as the first level, to make it easier to remove the level 0
-  # in the final table
-  mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
-  droplevels(),
-dependent = "num_doses_start",
-explanatory = setdiff(var_names, c("Total N (%)", "age_gp")),
-add_col_totals = TRUE,
-weights = "eave_weight",
-na_include = TRUE
+summary_tbl_wt_chrt_16_74 =summary_factorlist(
+  df_cohort %>%
+    filter(age_gp == "16-74") %>%
+    # Put 1 as the first level, to make it easier to remove the level 0
+    # in the final table
+    mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
+    droplevels(),
+  dependent = "num_doses_start",
+  explanatory = setdiff(var_names, c("Total N (%)", "age_gp")),
+  add_col_totals = TRUE,
+  weights = "eave_weight",
+  na_include = TRUE
 )
 
 
 # Only display one level for binary variables
-summary_tbl_wt_chrt_16_74$label[summary_tbl_wt_chrt_16_74$label == ""] = NA
+summary_tbl_wt_chrt_16_74$label[summary_tbl_wt_chrt_16_74$label == ""] =NA
 
 summary_tbl_wt_chrt_16_74 = summary_tbl_wt_chrt_16_74 %>%
   mutate(label_dup = label) %>%
@@ -263,22 +268,23 @@ write.csv(summary_tbl_wt_chrt_16_74, paste0(output_dir, "/summary_table_weights_
 
 
 # 75+
-summary_tbl_wt_chrt_over_75 = summary_factorlist(df_cohort %>%
-  filter(age_gp == "75+") %>%
-  # Put 1 as the first level, to make it easier to remove the level 0
-  # in the final table
-  mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
-  droplevels(),
-dependent = "num_doses_start",
-explanatory = setdiff(var_names, c("Total N (%)", "age_gp")),
-add_col_totals = TRUE,
-weights = "eave_weight",
-na_include = TRUE
+summary_tbl_wt_chrt_over_75 =summary_factorlist(
+  df_cohort %>%
+    filter(age_gp == "75+") %>%
+    # Put 1 as the first level, to make it easier to remove the level 0
+    # in the final table
+    mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
+    droplevels(),
+  dependent = "num_doses_start",
+  explanatory = setdiff(var_names, c("Total N (%)", "age_gp")),
+  add_col_totals = TRUE,
+  weights = "eave_weight",
+  na_include = TRUE
 )
 
 
 # Only display one level for binary variables
-summary_tbl_wt_chrt_over_75 = summary_tbl_wt_chrt_over_75 %>%
+summary_tbl_wt_chrt_over_75 =summary_tbl_wt_chrt_over_75 %>%
   mutate(label_dup = label) %>%
   mutate(label_dup = case_when(
     label_dup == "" ~ NA_character_,

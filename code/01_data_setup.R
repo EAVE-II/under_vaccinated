@@ -145,8 +145,7 @@ Vaccinations = readRDS(paste0(Location, "/EAVE/GPanalysis/data/cleaned_data/C19v
   )) %>%
   pivot_wider(
     id_cols = c(
-      "EAVE_LINKNO", "first_dose", "second_dose", "third_dose", "fourth_dose",
-      "fifth_dose"
+      "EAVE_LINKNO", "first_dose", "second_dose", "third_dose", "fourth_dose", "fifth_dose"
     ),
     names_prefix = "vacc_type_", names_from = vacc_dose_number,
     values_from = vacc_product_name, values_fill = NA, values_fn = Mode
@@ -188,8 +187,6 @@ Cohort_Household = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort
   mutate(ave_hh_age = if_else(is.na(ave_hh_age), mean(ave_hh_age, na.rm = T), ave_hh_age))
 
 # endpoints
-# This only includes covid hospitalisations/deaths when they are the listed as the cause
-# Should I also take deaths/hospitalisations within 28 days of positive test?
 # endpoints = readRDS(paste0(Location,'/EAVE/GPanalysis/outputs/temp/severe_endpoints2022-06-23.rds')) %>%
 #   mutate(covid_hosp = case_when( covid_mcoa_hosp == 1 & emergency == 1 ~ 1,
 #                                  TRUE ~ 0),
@@ -345,6 +342,10 @@ df_cohort = left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
 
 # Count all combinations of vaccines that anyone has received
 vacc_seq_start_count = count(df_cohort, vacc_seq_start)
+
+# vacc_seq_start_count_pruned will be used in defining a mixed vaccine status variable
+# Sequences of vaccines that occur in vacc_seq_start_count_pruned will be encoded in this 
+# vaccine status variable. Otherwise, it will just be called mixed.
 vacc_seq_start_count_pruned = filter(vacc_seq_start_count, n >= 1000)
 
 # More vaccine related derived variables
@@ -442,6 +443,7 @@ df_cohort = ever_shielding %>%
   mutate(shielding = replace_na(shielding, 0))
 
 # Re-weight, taking into account contact with healthcare
+# Load in other datasets that indicate contact with healthcare
 bnf = readRDS(paste0(Location, "EAVE/GPanalysis/data/BNF_paragraphs.rds"))
 sicsag = readRDS(paste0(Location, "EAVE/GPanalysis/data/SICSAG_episode_level_.rds"))
 pis = readRDS(paste0(Location, "EAVE/GPanalysis/data/PIS_2019_2021_EAVELink.rds"))

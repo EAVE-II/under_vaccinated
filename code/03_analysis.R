@@ -89,6 +89,7 @@ create_logistic_results_table = function(df_cohort, model, dep_var, ind_vars) {
     rename("Odds ratio" = OR)
 }
 
+
 # Fits naive bayes model, saves graphs of fitted marginal distributions
 nb_analysis = function(df_cohort, age_group, dep_var, ind_vars) {
   dir = paste0(output_dir, "nb_undervaccination_", age_group)
@@ -125,6 +126,7 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
 
   df_cohort = filter(df_cohort, age_gp == age_group) %>%
     droplevels()
+  
   df_survival = create_df_survival(df_cohort, dep_var, calendar_days = calendar_days, study_start = study_start, study_end = study_end)
 
   # Cumulative incidence curve
@@ -179,8 +181,9 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
 
 
 # Creates dataframe that is ready for survival model to be fitted.
-# df should have a column event_col that is binary and says whether person had an event
-# It should also have a column event_col_date that is date of event
+# event_col is a variable whose value is the name of the event column. This is binary and says whether person had an event.
+# event_date_col is a variable whose value is the name of the event date column.
+# df must both of these columns.
 create_df_survival = function(df, event_col, calendar_days, study_start, study_end) {
   event_date_col = paste0(event_col, "_date")
 
@@ -276,18 +279,17 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
         data = df_survival,
         scale = 1,
         data.frame = TRUE
-      )$data %>%
+        )$data %>%
         mutate(Variable = var) %>%
         rename(Levels = !!sym(var)) %>%
         mutate(Levels = as.character(Levels),
                HR = case_when( Levels == as.character(levels( as.factor(pull(df_survival, !!sym(var))))[1])  ~ 'Ref',
                TRUE ~ NA_character_))
-
     )
   }
 
   person_years =
-    # Event rates are per thousand years
+    # Person years in the table are measured in units of thousands of years
     mutate(person_years, pyears = pyears / (365.25 * 1000),
       term = paste0(Variable, Levels)
     ) %>%
@@ -319,7 +321,7 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
     select(-term, -HR.x, -HR.y) %>%
     rename(
       `Number of events` = event,
-      `Hazard rate` = HR,
+      `Hazard ratio` = HR,
       `Persons` = n,
       `Person years (thousands)` = pyears
     )
@@ -401,19 +403,31 @@ cox_ind_vars = c(
 )
 
 cox_analysis(df_cohort,
-  age_group = "5-15", dep_var = "covid_hosp_death", ind_vars = cox_ind_vars,
-  calendar_days = NA, study_start = study_start, study_end = study_end_hosp_death
+  age_group = "5-15", 
+  dep_var = "covid_hosp_death", 
+  ind_vars = cox_ind_vars,
+  calendar_days = NA, 
+  study_start = study_start, 
+  study_end = study_end_hosp_death
 )
 
 cox_analysis(df_cohort,
-  age_group = "16-74", dep_var = "covid_hosp_death", ind_vars = cox_ind_vars,
-  calendar_days = NA, study_start = study_start, study_end = study_end_hosp_death
+  age_group = "16-74", 
+  dep_var = "covid_hosp_death", 
+  ind_vars = cox_ind_vars,
+  calendar_days = NA, 
+  study_start = study_start, 
+  study_end = study_end_hosp_death
 )
 
 # There is only one age group in 75+, so remove age_gp_2 from cox_ind_vars
 cox_analysis(df_cohort,
-  age_group = "75+", dep_var = "covid_hosp_death", ind_vars = setdiff(cox_ind_vars, 'age_gp_2'),
-  calendar_days = NA, study_start = study_start, study_end = study_end_hosp_death
+  age_group = "75+", 
+  dep_var = "covid_hosp_death", 
+  ind_vars = setdiff(cox_ind_vars, 'age_gp_2'),
+  calendar_days = NA, 
+  study_start = study_start, 
+  study_end = study_end_hosp_death
 )
 
 
@@ -421,7 +435,9 @@ cox_analysis(df_cohort,
 
 
 #### Tests
-
+# 
+# df_cohort_backup = df_cohort
+# 
 # df_cohort = df_cohort %>%
 #   filter(age_gp == "16-74")
 # df_cohort = filter(df_cohort, EAVE_LINKNO %in% sample(df_cohort$EAVE_LINKNO, 10000)) %>%
@@ -447,6 +463,14 @@ cox_analysis(df_cohort,
 # results_table = create_cox_results_table(df_cohort, model, cox_ind_vars)
 # 
 # cox_analysis(df_cohort,
-#   age_group = "16-74", dep_var = "covid_hosp_death",
-#   ind_vars = cox_ind_vars, calendar_days = 0, study_start, study_end
+#   age_group = "16-74", 
+#   dep_var = "covid_hosp_death",
+#   ind_vars = cox_ind_vars, 
+#   calendar_days = 0, 
+#   study_start, 
+#   study_end
 # )
+# 
+# df_cohort = df-cohort_backup
+# 
+# rm(df_cohort_backup)
