@@ -345,11 +345,11 @@ summary_tbl_wt_chrt_over_75$label = replace_na(summary_tbl_wt_chrt_over_75$label
 
 write.csv(summary_tbl_wt_chrt_over_75, paste0(output_dir, "/summary_table_weights_cohort_over_75.csv"), row.names = F)
 
-
-
-### Vaccinations by age group and week
+#### Vaccine uptake visualiations
 # Stu's code
 
+
+## Vaccinations by age group and week
 d_study_weeks = seq(
   from = floor_date(study_start, "week"),
   to   = floor_date(study_end, "week"),
@@ -396,8 +396,7 @@ d_vacc_week %>%
 ggsave(paste0(output_dir, 'vacc_count_by_week_dose_age_group.png'))
 
 
-
-### Time between vaccinations
+## Time between vaccinations
 d_vacc_diff =
   df_cohort %>%
   select(
@@ -448,8 +447,8 @@ d_vacc_diff %>%
 
 ggsave(paste0(output_dir, 'time_between_doses.png'))
 
-#### Uptake cumulative incidence
 
+### Uptake cumulative incidence
 lkp_events = c(
   "Unvaccinated",
   "Dose 1",
@@ -572,7 +571,4 @@ mstate_vacc %>%
   xlab('Day')
 
 ggsave(paste0(output_dir, 'uptake_cumulative_incidence.png'))
-
-
-
 
