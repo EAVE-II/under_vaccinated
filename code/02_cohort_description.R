@@ -9,6 +9,10 @@
 library(tidyverse)
 library(lubridate)
 library(finalfit)
+library(dtplyr)
+library(janitor)
+library(survival)
+library(broom)
 
 setwd("/conf/EAVE/GPanalysis/analyses/under_vaccinated")
 
@@ -31,7 +35,7 @@ var_names =c(
   "Total N (%)",
   "Sex",
   "ageYear",
-  "age_gp",
+  "age_group",
   "simd2020_sc_quintile",
   "ur6_2016_name",
   "n_risk_gps",
@@ -95,97 +99,98 @@ display_names =c(
 )
 
 # This will be used for changing variables names to display names
-names_map =setNames(display_names, var_names)
+names_map = setNames(display_names, var_names)
 
-summary_tbl_wt_chrt =summary_factorlist(
-  df_cohort %>%
-    mutate(fully_vaccinated = factor(fully_vaccinated,
-      labels = c("Under-vaccinated", "Fully-vaccinated")
-    )) %>%
-    # Put 1 as the first level, to make it easier to remove the level 0
-    # in the final table
-    mutate_at(bin_vars, ~ factor(., levels = c(1, 0))),
-  dependent = "fully_vaccinated",
-  explanatory = setdiff(var_names, "Total N (%)"),
-  add_col_totals = TRUE,
-  weights = "eave_weight",
-  na_include = TRUE
-)
+
+# Fully vaccinated table
+#
+# summary_tbl_wt_chrt =summary_factorlist(
+#   df_cohort %>%
+#     mutate(fully_vaccinated = factor(fully_vaccinated,
+#       labels = c("Under-vaccinated", "Fully-vaccinated")
+#     )) %>%
+#     # Put 1 as the first level, to make it easier to remove the level 0
+#     # in the final table
+#     mutate_at(bin_vars, ~ factor(., levels = c(1, 0))),
+#   dependent = "fully_vaccinated",
+#   explanatory = setdiff(var_names, "Total N (%)"),
+#   add_col_totals = TRUE,
+#   weights = "eave_weight",
+#   na_include = TRUE
+# )
+# 
+# 
+# # Only display one level for binary variables
+# summary_tbl_wt_chrt = summary_tbl_wt_chrt %>%
+#   mutate(label_dup = label) %>%
+#   mutate(label_dup = case_when(
+#     label_dup == "" ~ NA_character_,
+#     TRUE ~ label_dup
+#   )) %>%
+#   fill(label_dup, .direction = "down") %>%
+#   filter(!(label_dup %in% bin_vars) | (label_dup %in% bin_vars & levels == "1")) %>%
+#   select(-label_dup) %>%
+#   mutate(levels = case_when(
+#     levels == 1 & label %in% bin_vars ~ "",
+#     TRUE ~ levels
+#   ))
+# 
+# # Change to display names
+# summary_tbl_wt_chrt$label =names_map[summary_tbl_wt_chrt$label]
+# summary_tbl_wt_chrt$label =replace_na(summary_tbl_wt_chrt$label, "")
+# 
+# write.csv(summary_tbl_wt_chrt, paste0(output_dir, "/summary_table_weights_cohort.csv"), row.names = F)
+
+
+
+# Summary table with more detailed vaccination status categories
+summary_tbl_wt_chrt = summary_factorlist(df_cohort %>%
+                                            # Put 1 as the first level, to make it easier to remove the level 0
+                                            # in the final table
+                                            mutate_at(bin_vars, ~factor(., levels = c(1,0)) ),
+                                          dependent = "vs_mixed_start",
+                                          explanatory = setdiff(var_names, 'Total N (%)'),
+                                          add_col_totals = TRUE,
+                                          weights = 'eave_weight',
+                                          na_include = TRUE)
 
 
 # Only display one level for binary variables
+summary_tbl_wt_chrt$label[summary_tbl_wt_chrt$label == ''] = NA
+
 summary_tbl_wt_chrt = summary_tbl_wt_chrt %>%
   mutate(label_dup = label) %>%
-  mutate(label_dup = case_when(
-    label_dup == "" ~ NA_character_,
-    TRUE ~ label_dup
-  )) %>%
-  fill(label_dup, .direction = "down") %>%
-  filter(!(label_dup %in% bin_vars) | (label_dup %in% bin_vars & levels == "1")) %>%
+  mutate(label_dup = case_when(label_dup == '' ~ NA_character_,
+                               TRUE ~ label_dup)) %>%
+  fill(label_dup, .direction = 'down') %>%
+  fill(label_dup, .direction = 'down') %>%
+  filter(!(label_dup %in% bin_vars) |  (label_dup %in% bin_vars & levels == '1') ) %>%
   select(-label_dup) %>%
-  mutate(levels = case_when(
-    levels == 1 & label %in% bin_vars ~ "",
-    TRUE ~ levels
-  ))
+  mutate(levels = case_when(levels == 1 & label %in% bin_vars ~ '',
+                            TRUE ~ levels))
 
 # Change to display names
-summary_tbl_wt_chrt$label =names_map[summary_tbl_wt_chrt$label]
-summary_tbl_wt_chrt$label =replace_na(summary_tbl_wt_chrt$label, "")
+summary_tbl_wt_chrt$label = names_map[summary_tbl_wt_chrt$label]
+summary_tbl_wt_chrt$label = replace_na(summary_tbl_wt_chrt$label, '')
 
-write.csv(summary_tbl_wt_chrt, paste0(output_dir, "/summary_table_weights_cohort.csv"), row.names = F)
-
-
+write.csv(summary_tbl_wt_chrt ,paste0(output_dir, '/summary_table_weights_cohort_2.csv'), row.names = F)
 
 
 
 
-# # Summary table with more detailed vaccination status categories
-# summary_tbl_wt_chrt_2 = summary_factorlist(df_cohort %>%
-#                                             # Put 1 as the first level, to make it easier to remove the level 0
-#                                             # in the final table
-#                                             mutate_at(bin_vars, ~factor(., levels = c(1,0)) ),
-#                                           dependent = "vs_mixed_start",
-#                                           explanatory = setdiff(var_names, 'Total N (%)'),
-#                                           add_col_totals = TRUE,
-#                                           weights = 'eave_weight',
-#                                           na_include = TRUE)
-#
-#
-# # Only display one level for binary variables
-# summary_tbl_wt_chrt_2$label[summary_tbl_wt_chrt_2$label == ''] = NA
-#
-# summary_tbl_wt_chrt_2 = summary_tbl_wt_chrt_2 %>%
-#   mutate(label_dup = label) %>%
-#   mutate(label_dup = case_when(label_dup == '' ~ NA_character_,
-#                                TRUE ~ label_dup)) %>%
-#   fill(label_dup, .direction = 'down') %>%
-#   fill(label_dup, .direction = 'down') %>%
-#   filter(!(label_dup %in% bin_vars) |  (label_dup %in% bin_vars & levels == '1') ) %>%
-#   select(-label_dup) %>%
-#   mutate(levels = case_when(levels == 1 & label %in% bin_vars ~ '',
-#                             TRUE ~ levels))
-#
-# # Change to display names
-# summary_tbl_wt_chrt_2$label = names_map[summary_tbl_wt_chrt_2$label]
-# summary_tbl_wt_chrt_2$label = replace_na(summary_tbl_wt_chrt_2$label, '')
-#
-# write.csv(summary_tbl_wt_chrt_2 ,paste0(output_dir, '/summary_table_weights_cohort_2.csv'), row.names = F)
 
+#### Summary tables for each age group
 
-
-
-# Summary tables by age
-
-# 5-15
-summary_tbl_wt_chrt_5_15 =summary_factorlist(
+# 5-11
+summary_tbl_wt_chrt_5_11 =summary_factorlist(
   df_cohort %>%
-    filter(age_gp == "5-15") %>%
+    filter(age_group == "5-11") %>%
     # Put 1 as the first level, to make it easier to remove the level 0
     # in the final table
     mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
     droplevels(),
   dependent = "num_doses_start",
-  explanatory = setdiff(var_names, c("Total N (%)", "age_gp")),
+  explanatory = setdiff(var_names, c("Total N (%)", "age_group")),
   add_col_totals = TRUE,
   weights = "eave_weight",
   na_include = TRUE
@@ -193,9 +198,9 @@ summary_tbl_wt_chrt_5_15 =summary_factorlist(
 
 
 # Only display one level for binary variables
-summary_tbl_wt_chrt_5_15$label[summary_tbl_wt_chrt_5_15$label == ""] =NA
+summary_tbl_wt_chrt_5_11$label[summary_tbl_wt_chrt_5_11$label == ""] =NA
 
-summary_tbl_wt_chrt_5_15 =summary_tbl_wt_chrt_5_15 %>%
+summary_tbl_wt_chrt_5_11 =summary_tbl_wt_chrt_5_11 %>%
   mutate(label_dup = label) %>%
   mutate(label_dup = case_when(
     label_dup == "" ~ NA_character_,
@@ -211,27 +216,65 @@ summary_tbl_wt_chrt_5_15 =summary_tbl_wt_chrt_5_15 %>%
   ))
 
 # Change to display names
-summary_tbl_wt_chrt_5_15$label =names_map[summary_tbl_wt_chrt_5_15$label]
-summary_tbl_wt_chrt_5_15$label =replace_na(summary_tbl_wt_chrt_5_15$label, "")
+summary_tbl_wt_chrt_5_11$label =names_map[summary_tbl_wt_chrt_5_11$label]
+summary_tbl_wt_chrt_5_11$label =replace_na(summary_tbl_wt_chrt_5_11$label, "")
 
-write.csv(summary_tbl_wt_chrt_5_15, paste0(output_dir, "/summary_table_weights_cohort_5_15.csv"), row.names = F)
-
-
+write.csv(summary_tbl_wt_chrt_5_11, paste0(output_dir, "/summary_table_weights_cohort_5_11.csv"), row.names = F)
 
 
+
+# 12-15
+summary_tbl_wt_chrt_12_15 =summary_factorlist(
+  df_cohort %>%
+    filter(age_group == "12-15") %>%
+    # Put 1 as the first level, to make it easier to remove the level 0
+    # in the final table
+    mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
+    droplevels(),
+  dependent = "num_doses_start",
+  explanatory = setdiff(var_names, c("Total N (%)", "age_group")),
+  add_col_totals = TRUE,
+  weights = "eave_weight",
+  na_include = TRUE
+)
+
+
+# Only display one level for binary variables
+summary_tbl_wt_chrt_12_15$label[summary_tbl_wt_chrt_12_15$label == ""] =NA
+
+summary_tbl_wt_chrt_12_15 =summary_tbl_wt_chrt_12_15 %>%
+  mutate(label_dup = label) %>%
+  mutate(label_dup = case_when(
+    label_dup == "" ~ NA_character_,
+    TRUE ~ label_dup
+  )) %>%
+  fill(label_dup, .direction = "down") %>%
+  fill(label_dup, .direction = "down") %>%
+  filter(!(label_dup %in% bin_vars) | (label_dup %in% bin_vars & levels == "1")) %>%
+  select(-label_dup) %>%
+  mutate(levels = case_when(
+    levels == 1 & label %in% bin_vars ~ "",
+    TRUE ~ levels
+  ))
+
+# Change to display names
+summary_tbl_wt_chrt_12_15$label =names_map[summary_tbl_wt_chrt_12_15$label]
+summary_tbl_wt_chrt_12_15$label =replace_na(summary_tbl_wt_chrt_12_15$label, "")
+
+write.csv(summary_tbl_wt_chrt_12_15, paste0(output_dir, "/summary_table_weights_cohort_12_15.csv"), row.names = F)
 
 
 
 # 16-74
 summary_tbl_wt_chrt_16_74 =summary_factorlist(
   df_cohort %>%
-    filter(age_gp == "16-74") %>%
+    filter(age_group == "16-74") %>%
     # Put 1 as the first level, to make it easier to remove the level 0
     # in the final table
     mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
     droplevels(),
   dependent = "num_doses_start",
-  explanatory = setdiff(var_names, c("Total N (%)", "age_gp")),
+  explanatory = setdiff(var_names, c("Total N (%)", "age_group")),
   add_col_totals = TRUE,
   weights = "eave_weight",
   na_include = TRUE
@@ -265,18 +308,16 @@ write.csv(summary_tbl_wt_chrt_16_74, paste0(output_dir, "/summary_table_weights_
 
 
 
-
-
 # 75+
 summary_tbl_wt_chrt_over_75 =summary_factorlist(
   df_cohort %>%
-    filter(age_gp == "75+") %>%
+    filter(age_group == "75+") %>%
     # Put 1 as the first level, to make it easier to remove the level 0
     # in the final table
     mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
     droplevels(),
   dependent = "num_doses_start",
-  explanatory = setdiff(var_names, c("Total N (%)", "age_gp")),
+  explanatory = setdiff(var_names, c("Total N (%)", "age_group")),
   add_col_totals = TRUE,
   weights = "eave_weight",
   na_include = TRUE
@@ -303,3 +344,235 @@ summary_tbl_wt_chrt_over_75$label = names_map[summary_tbl_wt_chrt_over_75$label]
 summary_tbl_wt_chrt_over_75$label = replace_na(summary_tbl_wt_chrt_over_75$label, "")
 
 write.csv(summary_tbl_wt_chrt_over_75, paste0(output_dir, "/summary_table_weights_cohort_over_75.csv"), row.names = F)
+
+
+
+### Vaccinations by age group and week
+# Stu's code
+
+d_study_weeks = seq(
+  from = floor_date(study_start, "week"),
+  to   = floor_date(study_end, "week"),
+  by   = "1 week"
+)
+
+d_dummy_weeks = expand_grid(
+  age_group  = sort(unique(df_cohort$age_group)),
+  dose_num  = c("1", "2", "3", "4"),
+  dose_week = d_study_weeks
+)
+
+d_vacc_week =
+  df_cohort %>%
+  select(
+    age_group,
+    `1` = date_vacc_1,
+    `2` = date_vacc_2,
+    `3` = date_vacc_3,
+    `4` = date_vacc_4
+  ) %>%
+  pivot_longer(
+    cols           = c('1', '2', '3', '4'),
+    names_to       = "dose_num",
+    values_to      = "dose_date",
+    values_drop_na = TRUE
+  ) %>%
+  mutate(dose_week = floor_date(dose_date, "week")) %>%
+  filter(dose_week <= study_end) %>%
+  count(age_group, dose_num, dose_week) %>%
+  full_join(d_dummy_weeks, by = c("age_group", "dose_num", "dose_week")) %>%
+  mutate(n = replace_na(n, as.integer(0))) %>%
+  arrange(age_group, dose_num, dose_week)
+
+
+d_vacc_week %>%
+  ggplot(aes(x = dose_week, y = n, colour = dose_num)) +
+  facet_wrap(~ age_group, ncol = 1, scales = "free_y") +
+  geom_line() + 
+  xlab('') + 
+  ylab('') + 
+  labs(color ='Dose') 
+
+ggsave(paste0(output_dir, 'vacc_count_by_week_dose_age_group.png'))
+
+
+
+### Time between vaccinations
+d_vacc_diff =
+  df_cohort %>%
+  select(
+    EAVE_LINKNO,
+    age_group,
+    dose1    = date_vacc_1,
+    dose2    = date_vacc_2,
+    dose3    = date_vacc_3,
+    dose4    = date_vacc_4
+  ) %>%
+  # remove events after study window
+  mutate(across(
+    .cols = where(is.Date),
+    .fns  = ~ if_else(.x <= study_end, .x, NA_Date_)
+  )) %>%
+  mutate(
+    # weeks between doses
+    `Dose 1 to 2` = interval(dose1, dose2) / dweeks(),
+    `Dose 2 to 3` = interval(dose2, dose3) / dweeks(),
+    `Dose 3 to 4` = interval(dose3, dose4) / dweeks(),
+    # round off
+    `Dose 1 to 2` = floor(`Dose 1 to 2`),
+    `Dose 2 to 3` = floor(`Dose 2 to 3`),
+    `Dose 3 to 4` = floor(`Dose 3 to 4`)
+  ) %>%
+  select(
+    age_group,
+    `Dose 1 to 2`,
+    `Dose 2 to 3`,
+    `Dose 3 to 4`
+  ) %>%
+  pivot_longer(
+    cols           = -age_group,
+    names_to       = "dose_to_dose",
+    values_to      = "diff_weeks",
+    values_drop_na = TRUE
+  ) %>%
+  count(age_group, dose_to_dose, diff_weeks)
+
+
+d_vacc_diff %>%
+  ggplot(aes(
+    x = diff_weeks,
+    y = n,
+  )) +
+  facet_grid(age_group ~ dose_to_dose, scales = "free") +
+  geom_col()
+
+ggsave(paste0(output_dir, 'time_between_doses.png'))
+
+#### Uptake cumulative incidence
+
+lkp_events = c(
+  "Unvaccinated",
+  "Dose 1",
+  "Dose 2",
+  "Dose 3",
+  "Dose 4",
+  "Death",
+  "study_end"
+)
+
+# make multi-state date set for dose
+d_mstate_vacc =
+  df_cohort %>%
+  mutate(
+    Death = NRS.Date.Death,
+    study_end = study_end
+  ) %>%
+  select(
+    EAVE_LINKNO,
+    age_group,
+    `Dose 1`    = date_vacc_1,
+    `Dose 2`   = date_vacc_2,
+    `Dose 3`    = date_vacc_3,
+    `Dose 4`    = date_vacc_4,
+    Death,
+    study_end
+  ) %>%
+  # any first day events just add half a day
+  mutate(across(
+    .cols = where(is.Date),
+    .fns  = ~ if_else(.x == study_start, .x + ddays(0.5), as_datetime(.x))
+  )) %>%
+  # remove events after someone has either moved out, died, or reached the
+  # end of the study window
+  mutate(
+    end_follow_up = pmin(Death, study_end, na.rm = TRUE)
+  ) %>%
+  mutate(across(
+    .cols = where(is.POSIXct),
+    .fns  = ~ if_else(.x <= end_follow_up, .x, NA_POSIXct_)
+  )) %>%
+  select(-end_follow_up) %>%
+  pivot_longer(
+    cols           = c(-EAVE_LINKNO, -age_group),
+    names_to       = "event_name",
+    values_to      = "event_date",
+    values_drop_na = TRUE
+  ) %>%
+  # add row number for alf
+  lazy_dt() %>%
+  arrange(EAVE_LINKNO, event_date) %>%
+  group_by(EAVE_LINKNO) %>%
+  mutate(alf_seq = row_number()) %>%
+  as_tibble() %>%
+  # define survival columns
+  mutate(
+    tstart     = if_else(alf_seq == 1, as_datetime(study_start), lag(event_date)),
+    tstart     = interval(as_datetime(study_start), tstart) / ddays(),
+    state_from = if_else(alf_seq == 1, "Unvaccinated", lag(event_name)),
+    state_from = factor(state_from, lkp_events) %>% fct_drop(),
+    tstop      = event_date,
+    tstop      = interval(as_datetime(study_start), tstop) / ddays(),
+    state_to   = factor(event_name, lkp_events) %>% fct_drop()
+  ) %>%
+  select(
+    -event_name,
+    -event_date
+  ) %>%
+  # anyone who has event on last day, remove row for that transition from event to study end
+  filter(!(tstart > 0 & tstart == tstop & state_to == "study_end")) %>%
+  # any same day events that go from dose to death / move out just add half a day again
+  mutate(
+    tstop = if_else(
+      condition = state_from %in% c("Dose 1", "Dose 2", "Dose 3", "Dose 4") &
+        state_to  == "Death" &
+        tstart == tstop,
+      true = tstop + 0.5,
+      false = tstop
+    )
+  ) %>%
+  # finalise censored category
+  mutate(
+    state_to = state_to %>%
+      fct_collapse("(censored)" = "study_end") %>%
+      fct_relevel("(censored)")
+  )
+
+# explore
+d_mstate_vacc %>% tabyl(state_from, state_to)
+
+# fit mstate
+mstate_vacc = survfit(
+  formula = Surv(tstart, tstop, state_to) ~ age_group,
+  data = d_mstate_vacc,
+  id = EAVE_LINKNO
+)
+
+
+mstate_vacc %>%
+  tidy() %>%
+  mutate(
+    strata = strata %>%
+      str_replace("age_group=", "") %>%
+      factor() %>%
+      fct_relevel("5-11", "12-15", "16-74", "75+"),
+    State = state %>%
+      factor() %>%
+      fct_recode("Unvaccinated" = "(s0)") %>%
+      fct_relevel("Death")
+  ) %>%
+  ggplot(aes(
+    x = time,
+    y = estimate,
+    fill = State
+  )) +
+  facet_wrap(~strata, ncol = 1) +
+  geom_area() +
+  scale_fill_brewer( type = "qual") +
+  ylab('Cumulative incidence') +
+  xlab('Day')
+
+ggsave(paste0(output_dir, 'uptake_cumulative_incidence.png'))
+
+
+
+

@@ -12,9 +12,9 @@ Location = "/conf/"
 
 setwd("/conf/EAVE/GPanalysis/analyses/under_vaccinated")
 
-# study_start is the date where there under-vaccination status is determined
+# study_start is the date where their under-vaccination status is determined
 study_start = as.Date("2022-06-01")
-# study_end is the start of follow-up for serious events
+# study_end is the end of follow-up for serious events
 study_end = as.Date("2022-09-30")
 
 # R does't have a built-in mode function
@@ -125,8 +125,7 @@ covid_hospitalisations = smr %>%
 # Import vaccination data
 # source('/conf/EAVE/GPanalysis/progs/Data_Cleaning/00_Read_DV_Vaccinations_Dose4.R')
 Vaccinations = readRDS(paste0(Location, "/EAVE/GPanalysis/data/cleaned_data/C19vaccine_dvprod_cleaned.rds")) %>%
-  select(
-    EAVE_LINKNO, first_dose, second_dose, third_dose, fourth_dose, fifth_dose,
+  select(EAVE_LINKNO, first_dose, second_dose, third_dose, fourth_dose, fifth_dose,
     vacc_dose_number, vacc_product_name
   ) %>%
   mutate(
@@ -135,7 +134,7 @@ Vaccinations = readRDS(paste0(Location, "/EAVE/GPanalysis/data/cleaned_data/C19v
     vacc_product_name = gsub("Covid-19 mRNA Vaccine Moderna", "Mo", vacc_product_name),
     vacc_product_name = gsub("Covid-19 mRNA Vaccine Spikevax Bivalent Moderna", "Mo", vacc_product_name),
     vacc_product_name = gsub("Covid-19 mRNA Vaccine Comirnaty Bivalent Pfizer", "PB", vacc_product_name),
-    vacc_product_name = gsub("Covid-19 Vaccine Novavax ", "No", vacc_product_name)
+    vacc_product_name = gsub("Covid-19 Vaccine Novavax", "No", vacc_product_name)
   ) %>%
   # 4th and 5th dose vaccinations with the moderna bivalent vaccine are not currently picked up
   mutate(vacc_dose_number = case_when(
@@ -157,6 +156,21 @@ Vaccinations = readRDS(paste0(Location, "/EAVE/GPanalysis/data/cleaned_data/C19v
     date_vacc_4 = fourth_dose,
     date_vacc_5 = fifth_dose
   ) %>%
+  mutate(
+    # If someone has e.g. a date_vacc_3, but no record of second dose, assume they got a second dose and set vacc_type_2 to Unknown
+    vacc_type_1 = case_when(
+      is.na(vacc_type_1) & (!is.na(date_vacc_2) | !is.na(date_vacc_3)| !is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
+      TRUE ~ vacc_type_1),
+    vacc_type_2 = case_when(
+      is.na(vacc_type_2) & (!is.na(date_vacc_3) | !is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
+      TRUE ~ vacc_type_2),
+    vacc_type_3 = case_when(  
+      is.na(vacc_type_3) & (!is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
+      TRUE ~ vacc_type_3),
+    vacc_type_4 = case_when( 
+      is.na(vacc_type_4) &!is.na(date_vacc_5) ~ 'Unk',
+      TRUE ~ vacc_type_4)
+    ) %>%
   data.frame()
 
 # Clean rows with duplicated EAVE_LINKNO
@@ -186,24 +200,7 @@ Cohort_Household = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort
   )) %>%
   mutate(ave_hh_age = if_else(is.na(ave_hh_age), mean(ave_hh_age, na.rm = T), ave_hh_age))
 
-# endpoints
-# endpoints = readRDS(paste0(Location,'/EAVE/GPanalysis/outputs/temp/severe_endpoints2022-06-23.rds')) %>%
-#   mutate(covid_hosp = case_when( covid_mcoa_hosp == 1 & emergency == 1 ~ 1,
-#                                  TRUE ~ 0),
-#          covid_death = case_when( covid_cod == 1 ~ 1,
-#                                   TRUE ~ 0),
-#          covid_hosp_death = case_when(covid_hosp == 1 | covid_death == 1 ~ 1,
-#                                       TRUE ~ 0) ) %>%
-#   mutate(covid_hosp_date = case_when(covid_hosp == 1 ~ hosp_admit_date,
-#                                      TRUE ~ as.Date(NA)),
-#          covid_death_date = case_when(covid_death == 1 ~ NRS.Date.Death,
-#                                      TRUE ~ as.Date(NA)),
-#          covid_hosp_death_date = case_when(covid_hosp_death == 1 ~ pmin(covid_hosp_date, covid_death_date, na.rm = TRUE),
-#                                       TRUE ~ as.Date(NA)) ) %>%
-#     select(EAVE_LINKNO, hosp_admit_date, NRS.Date.Death, covid_hosp, covid_hosp_date,
-#            covid_death, covid_death_date,
-#            covid_hosp_death, covid_hosp_death_date)
-
+# Endpoints
 endpoints = covid_hospitalisations %>%
   rename(covid_hosp_date = ADMISSION_DATE) %>%
   mutate(covid_hosp = 1) %>%
@@ -230,16 +227,21 @@ df_cohort = EAVE_cohort %>%
   mutate(ageYear = ageYear + 2) %>%
   filter(ageYear >= 5) %>%
   mutate(
-    age_gp = cut(ageYear,
-      breaks = c(5, 16, 75, Inf),
-      labels = c("5-15", "16-74", "75+"),
+    age_group = cut(ageYear,
+      breaks = c(5, 12, 16, 75, Inf),
+      labels = c("5-11", "12-15", "16-74", "75+"),
       right = FALSE
     ),
-    age_gp_2 = cut(ageYear,
-      breaks = c(5, 12, 16, 18, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, Inf),
+    age_group_2 = cut(ageYear,
+                    breaks = c(5, 18, 75, Inf),
+                    labels = c("5-17", "18-74", "75+"),
+                    right = FALSE
+    ),
+    age_group_3 = cut(ageYear,
+      breaks = c(5, 12, 16, 18, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, Inf),
       labels = c(
         "5-11", "12-15", "16-17", "18-24", "25-29", "30-34", "35-39", "40-44", "45-49", "50-54",
-        "55-59", "60-64", "65-69", "70-74", "75+"
+        "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85+"
       ),
       right = FALSE
     )
@@ -324,8 +326,6 @@ df_cohort = left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
     )
   ) %>%
   mutate(
-    num_doses_recent = factor(num_doses_recent),
-    num_doses_start = factor(num_doses_start),
     vacc_seq_recent = trimws(vacc_seq_recent, whitespace = "_"),
     vacc_seq_start = trimws(vacc_seq_start, whitespace = "_")
   ) %>%
@@ -346,7 +346,7 @@ vacc_seq_start_count = count(df_cohort, vacc_seq_start)
 # vacc_seq_start_count_pruned will be used in defining a mixed vaccine status variable
 # Sequences of vaccines that occur in vacc_seq_start_count_pruned will be encoded in this 
 # vaccine status variable. Otherwise, it will just be called mixed.
-vacc_seq_start_count_pruned = filter(vacc_seq_start_count, n >= 1000)
+#vacc_seq_start_count_pruned = filter(vacc_seq_start_count, n >= 1000)
 
 # More vaccine related derived variables
 df_cohort = mutate(df_cohort,
@@ -371,18 +371,58 @@ df_cohort = mutate(df_cohort,
 ) %>%
   mutate(
     fully_vaccinated = case_when(
-      age_gp == "5-15" & date_vacc_2 <= study_start ~ 1,
-      age_gp == "16-74" & date_vacc_3 <= study_start ~ 1,
-      age_gp == "75+" & date_vacc_4 <= study_start ~ 1,
+      age_group == "5-11" & date_vacc_1 <= study_start ~ 1,
+      age_group == "12-15" & date_vacc_2 <= study_start ~ 1,
+      age_group == "16-74" & date_vacc_3 <= study_start ~ 1,
+      age_group == "75+" & date_vacc_4 <= study_start ~ 1,
       TRUE ~ 0
-    ),
-    # Mixed vaccine status
-    vs_mixed_start = case_when(
-      mixed_vacc_start == 1 & !(vacc_seq_start %in% vacc_seq_start_count_pruned$vacc_seq) ~ paste0("v", num_doses_start, "_mixed"),
-      TRUE ~ vacc_seq_start
     )
   ) %>%
   mutate(fully_vaccinated = factor(fully_vaccinated))
+
+df_cohort = mutate(df_cohort,
+    # Mixed vaccine status at study start
+    vs_mixed_start = case_when(
+      num_doses_start == 0 ~ 'uv',
+      num_doses_start == 1 ~ vacc_seq_start,
+      num_doses_start == 2 & vacc_seq_start %in% c('AZ_AZ', 'PB_PB', 'Mo_Mo') ~ vacc_seq_start,
+      num_doses_start == 2 & vacc_type_1 == 'AZ' & vacc_type_2 %in% c('PB', 'Mo') ~ 'v2_AZ_mrna',
+      num_doses_start == 2 & vacc_type_1 %in% c('PB', 'Mo') & vacc_type_2 %in% c('PB', 'Mo') ~ 'v2_mixed_mrna',
+      num_doses_start == 2 ~ 'v2_other',
+      num_doses_start == 3 & age_group %in% c('5-11', '12-15') ~ '3+',
+      num_doses_start == 3 & vacc_seq_start %in% 
+        c('AZ_AZ_PB', 'AZ_AZ_Mo', 'AZ_AZ_AZ', 'PB_PB_PB', 'PB_PB_Mo', 'Mo_Mo_PB', 'Mo_Mo_Mo') ~ vacc_seq_start,
+      num_doses_start == 3 & vacc_type_3 == 'PB' ~ 'other_mixed_2_dose_PB',
+      num_doses_start == 3 & vacc_type_3 == 'Mo' ~ 'other_mixed_2_dose_Mo',
+      num_doses_start == 3 ~ 'v3_other',
+      num_doses_start == 4 & age_group %in% c('5-11', '12-15', '16-74') ~ '4+',
+      num_doses_start == 4 & vacc_type_1 == 'AZ' & vacc_type_2 == 'AZ' ~ 'v4_AZ_AZ_any',
+      num_doses_start == 4 & vacc_type_1 == 'PB' & vacc_type_2 == 'PB' ~ 'v4_PB_PB_any',
+      num_doses_start == 4 ~ 'v4_other',
+      num_doses_start > 4 ~ '5+'
+    ),
+    # Mixed vaccine status according to most recent data
+    vs_mixed_recent = case_when(
+      num_doses_recent == 0 ~ 'uv',
+      num_doses_recent == 1 ~ vacc_seq_recent,
+      num_doses_recent == 2 & vacc_seq_recent %in% c('AZ_AZ', 'PB_PB', 'Mo_Mo') ~ vacc_seq_recent,
+      num_doses_recent == 2 & vacc_type_1 == 'AZ' & vacc_type_2 %in% c('PB', 'Mo') ~ 'v2_AZ_mrna',
+      num_doses_recent == 2 & vacc_type_1 %in% c('PB', 'Mo') & vacc_type_2 %in% c('PB', 'Mo') ~ 'v2_mixed_mrna',
+      num_doses_recent == 2 ~ 'v2_other',
+      num_doses_recent == 3 & age_group %in% c('5-11', '12-15') ~ '3+',
+      num_doses_recent == 3 & vacc_seq_recent %in% 
+        c('AZ_AZ_PB', 'AZ_AZ_Mo', 'AZ_AZ_AZ', 'PB_PB_PB', 'PB_PB_Mo', 'Mo_Mo_PB', 'Mo_Mo_Mo') ~ vacc_seq_recent,
+      num_doses_recent == 3 & vacc_type_3 == 'PB' ~ 'other_mixed_2_dose_PB',
+      num_doses_recent == 3 & vacc_type_3 == 'Mo' ~ 'other_mixed_2_dose_Mo',
+      num_doses_recent == 3 ~ 'v3_other',
+      num_doses_recent == 4 & age_group %in% c('5-11', '12-15', '16-74') ~ '4+',
+      num_doses_recent == 4 & vacc_type_1 == 'AZ' & vacc_type_2 == 'AZ' ~ 'v4_AZ_AZ_any',
+      num_doses_recent == 4 & vacc_type_1 == 'PB' & vacc_type_2 == 'PB' ~ 'v4_PB_PB_any',
+      num_doses_recent == 4 ~ 'v4_other',
+      num_doses_recent > 4 ~ '5+'
+    )
+  ) 
+
 
 # Add household characteristics
 df_cohort = Cohort_Household %>%
@@ -512,7 +552,9 @@ df_cohort = mutate(df_cohort,
       TRUE ~ n_risk_gps
     )
   ) %>%
-  mutate(n_risk_gps = as.factor(n_risk_gps))
+  mutate(n_risk_gps = as.factor(n_risk_gps),
+         num_doses_start = factor(num_doses_start),
+         num_doses_recent = factor(num_doses_recent))
 
 
 df_cohort = mutate_at(df_cohort, c("EAVE_Smoke", "EAVE_BP"), ~ as.character(.)) %>%
@@ -559,25 +601,22 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 
 df_cohort = as.data.frame(df_cohort)
 
-# df_cohort has the folloiwng columns:
+# df_cohort has the following columns:
 #
-# [1] "EAVE_LINKNO"              "shielding"                "num_tests"                "last_positive_test"      
-# [5] "covid_hosps"              "NRS.Date.Death"           "covid_death"              "n_hh_gp"                 
-# [9] "ave_hh_age"               "Sex"                      "ageYear"                  "simd2020_sc_quintile"    
-# [13] "DataZone"                 "ur6_2016_name"            "age_gp"                   "age_gp_2"                
-# [17] "eave_weight"              "Q_BMI"                    "Q_HOME_CAT"               "Q_LEARN_CAT"             
-# [21] "Q_DIAG_CKD_LEVEL"         "Q_DIAG_AF"                "Q_DIAG_ASTHMA"            "Q_DIAG_BLOOD_CANCER"     
-# [25] "Q_DIAG_CCF"               "Q_DIAG_CEREBRALPALSY"     "Q_DIAG_CHD"               "Q_DIAG_CIRRHOSIS"        
-# [29] "Q_DIAG_CONGEN_HD"         "Q_DIAG_COPD"              "Q_DIAG_DEMENTIA"          "Q_DIAG_EPILEPSY"         
-# [33] "Q_DIAG_FRACTURE"          "Q_DIAG_HIV_AIDS"          "Q_DIAG_IMMU"              "Q_DIAG_NEURO"            
-# [37] "Q_DIAG_PARKINSONS"        "Q_DIAG_PULM_HYPER"        "Q_DIAG_PULM_RARE"         "Q_DIAG_PVD"              
-# [41] "Q_DIAG_RA_SLE"            "Q_DIAG_RESP_CANCER"       "Q_DIAG_SEV_MENT_ILL"      "Q_DIAG_SICKLE_CELL"      
-# [45] "Q_DIAG_STROKE"            "Q_DIAG_VTE"               "n_risk_gps"               "Q_DIAG_DIABETES_1"       
-# [49] "Q_DIAG_DIABETES_2"        "EAVE_Smoke"               "EAVE_BP"                  "bmi_cat"                 
-# [53] "date_vacc_1"              "date_vacc_2"              "date_vacc_3"              "date_vacc_4"             
-# [57] "date_vacc_5"              "vacc_type_1"              "vacc_type_2"              "vacc_type_3"             
-# [61] "vacc_type_4"              "vacc_type_5"              "vacc_type_NA"             "vacc_type_6"             
-# [65] "vacc_type_7"              "num_doses_recent"         "num_doses_start"          "vacc_seq_recent"         
-# [69] "vacc_seq_start"           "mixed_vacc_start"         "vs_recent"                "vs_start"                
-# [73] "fully_vaccinated"         "vs_mixed_start"           "covid_hosp_ever"          "last_positive_test_group"
-# [77] "num_tests_6m_group"
+# [1] "EAVE_LINKNO"              "shielding"                "num_tests"                "last_positive_test"       "covid_hosps"             
+# [6] "NRS.Date.Death"           "covid_death"              "n_hh_gp"                  "ave_hh_age"               "Sex"                     
+# [11] "ageYear"                  "simd2020_sc_quintile"     "DataZone"                 "ur6_2016_name"            "age_group"               
+# [16] "age_group_2"              "age_group_3"              "eave_weight"              "Q_BMI"                    "Q_HOME_CAT"              
+# [21] "Q_LEARN_CAT"              "Q_DIAG_CKD_LEVEL"         "Q_DIAG_AF"                "Q_DIAG_ASTHMA"            "Q_DIAG_BLOOD_CANCER"     
+# [26] "Q_DIAG_CCF"               "Q_DIAG_CEREBRALPALSY"     "Q_DIAG_CHD"               "Q_DIAG_CIRRHOSIS"         "Q_DIAG_CONGEN_HD"        
+# [31] "Q_DIAG_COPD"              "Q_DIAG_DEMENTIA"          "Q_DIAG_EPILEPSY"          "Q_DIAG_FRACTURE"          "Q_DIAG_HIV_AIDS"         
+# [36] "Q_DIAG_IMMU"              "Q_DIAG_NEURO"             "Q_DIAG_PARKINSONS"        "Q_DIAG_PULM_HYPER"        "Q_DIAG_PULM_RARE"        
+# [41] "Q_DIAG_PVD"               "Q_DIAG_RA_SLE"            "Q_DIAG_RESP_CANCER"       "Q_DIAG_SEV_MENT_ILL"      "Q_DIAG_SICKLE_CELL"      
+# [46] "Q_DIAG_STROKE"            "Q_DIAG_VTE"               "n_risk_gps"               "Q_DIAG_DIABETES_1"        "Q_DIAG_DIABETES_2"       
+# [51] "EAVE_Smoke"               "EAVE_BP"                  "bmi_cat"                  "date_vacc_1"              "date_vacc_2"             
+# [56] "date_vacc_3"              "date_vacc_4"              "date_vacc_5"              "vacc_type_1"              "vacc_type_2"             
+# [61] "vacc_type_3"              "vacc_type_4"              "vacc_type_5"              "vacc_type_NA"             "vacc_type_6"             
+# [66] "vacc_type_7"              "num_doses_recent"         "num_doses_start"          "vacc_seq_recent"          "vacc_seq_start"          
+# [71] "mixed_vacc_start"         "vs_recent"                "vs_start"                 "fully_vaccinated"         "vs_mixed_start"          
+# [76] "vs_mixed_recent"          "covid_hosp_ever"          "last_positive_test_group" "num_tests_6m_group"
+
