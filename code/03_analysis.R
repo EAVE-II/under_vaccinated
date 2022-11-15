@@ -194,13 +194,20 @@ cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, stu
   # Weighted Cox model
   formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(ind_vars, collapse = " + ")))
   
-  survey_design = svydesign(id = ~1,
-                            weights = ~ eave_weight,
-                            data = df_survival)
+  # Produces errors for reasons unknown
+  # survey_design = svydesign(id = ~1,
+  #                           weights = ~ eave_weight,
+  #                           data = df_survival)
+  # 
+  # model = svycoxph( formula,
+  #                   design = survey_design,
+  #                   data = df_survival)
   
-  model = svycoxph( formula,
-                    design = survey_design,
-                    data = df_survival)
+  # Normalise weight to 1 so standard errors are not distorted
+  df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
+  
+  # Robust standard errors are used by default if weights are not all equal to 1
+  model = coxph(formula, data = df_survival, weights = eave_weight)
 
   # Results table
   write.csv(create_cox_results_table(df_survival, model, ind_vars), paste0(dir, "/results_table.csv"), row.names = FALSE)
@@ -433,7 +440,12 @@ cox_ind_vars = c(
 
 
 for (age_gp in c('5-17', '18-74', '75+')){
+  
+  print(age_gp)
+  
   for (dep_var in c('covid_death', 'covid_hosp', 'covid_hosp_death')){
+    
+    print(dep_var)
     
     cox_analysis(df_cohort,
                  age_gp = age_gp, 
@@ -461,7 +473,7 @@ for (age_gp in c('5-17', '18-74', '75+')){
 #   droplevels()
 # 
 # df_survival = create_df_survival(df_cohort,
-#   event_col = "covid_hosp_death", calendar_days = 0, study_start = study_start, study_end = study_end
+#   event_col = "covid_death", calendar_days = 0, study_start = study_start, study_end = study_end
 # )
 # 
 # # # Check everything is ok - verify that bob is indeed one's uncle
@@ -479,7 +491,14 @@ for (age_gp in c('5-17', '18-74', '75+')){
 # survey_design = svydesign(id = ~1,
 #                           weights = ~ eave_weight,
 #                           data = df_survival)
-# model = coxph(formula, data = df_survival)
+# 
+# model = svycoxph( formula,
+#                   design = survey_design,
+#                   data = df_survival)
+# 
+# bob= mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
+# 
+# model = coxph(formula, data = df_survival, weights = eave_weight)
 # 
 # results_table = create_cox_results_table(df_survival, model, cox_ind_vars)
 # 

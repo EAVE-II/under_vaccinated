@@ -33,9 +33,6 @@ Mode = function(x) {
 
 EAVE_cohort = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort_Demog_Endpoints_Dates2021-07-28.rds")) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  # Original cohort is from approximately 2 years ago. Update their age.
-  mutate(ageYear = ageYear + 2) %>%
-  # remove all who have died before the beginning
   select(EAVE_LINKNO:ur6_2016_name)
 
 EAVE_Weights = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/CR_Cohort_Weights.rds"))
@@ -223,7 +220,7 @@ endpoints = covid_hospitalisations %>%
 #### 2 Create cohort dataframe
 
 df_cohort = EAVE_cohort %>%
-  # It has been a while since the EAVE cohort extract, add 2 to age.
+  # Original cohort is from approximately 2 years ago. Update their age.
   mutate(ageYear = ageYear + 2) %>%
   filter(ageYear >= 5) %>%
   mutate(
