@@ -59,8 +59,8 @@ qcovid_rg = full_join(qcovid_rg, qcovid_diabetes)
 # Get blood pressure and smoking risk groups
 eave_rg = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/CR_Cohort_RG_EAVE_BP_Smoke.rds")) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  select(EAVE_LINKNO, EAVE_Smoking_Status_Worst, EAVE_BP) %>%
-  rename(smoking_status = EAVE_Smoking_Status_Worst,
+  select(EAVE_LINKNO, 
+         smoking_status = EAVE_Smoking_Status_Worst, 
          blood_pressure = EAVE_BP) %>%
   mutate(
     smoking_status = as.character(smoking_status),
@@ -223,7 +223,8 @@ endpoints = covid_hospitalisations %>%
     covid_hosp_death == 1 ~ pmin(covid_hosp_date, covid_death_date, na.rm = TRUE),
     TRUE ~ as.Date(NA)
   )) %>%
-  distinct()
+  distinct() %>%
+  rename(individual_id = EAVE_LINKNO)
 
 
 
@@ -448,8 +449,6 @@ df_cohort = endpoints %>%
     TRUE ~ 0
   ))
 
-
-# This step is acquiring duplicates!
 # Add in time since last positive test and variant of last positive test
 df_cohort = filter(cdw, date_ecoss_specimen < study_start & test_result == "POSITIVE") %>%
   select(EAVE_LINKNO, date_ecoss_specimen) %>%
@@ -638,6 +637,7 @@ df_cohort = mutate_at(df_cohort, c("smoking_status", "blood_pressure"), ~ as.cha
     ),
     simd2020_sc_quintile = as.factor(as.character(simd2020_sc_quintile))
   ) %>%
+  rename(individual_id = EAVE_LINKNO)
   data.frame()
 
 # Check NA
@@ -648,7 +648,7 @@ df_cohort = as.data.frame(df_cohort)
 
 #### df_cohort has the following columns:
 
-# [1] "EAVE_LINKNO"              "shielding"                "num_pos_tests_6m"         "num_tests_6m"             "date_ecoss_specimen"     
+# [1] "individual_id"               "shielding"                "num_pos_tests_6m"         "num_tests_6m"             "date_ecoss_specimen"     
 # [6] "last_positive_variant"    "covid_hosps"              "date_death"               "covid_death"              "num_ppl_household"       
 # [11] "mean_household_age"       "sex"                      "age"                      "simd2020_sc_quintile"     "DataZone"                
 # [16] "urban_rural_class"        "age_group"                "age_group_2"              "age_group_3"              "eave_weight"             
@@ -669,7 +669,7 @@ df_cohort = as.data.frame(df_cohort)
 
 #### Variable descriptions
 
-# EAVE_LINKNO is an individual identifier
+# patient_id is what you think it is
 
 # shielding is whether they have ever been on the shielding list
 

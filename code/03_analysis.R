@@ -171,7 +171,7 @@ cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, stu
   plot = survfit(Surv(tstart, tstop, event) ~ num_doses_time_2,
     # Reset the origin to take account of tim
     data = df_survival %>%
-      group_by(EAVE_LINKNO, num_doses_time_2) %>%
+      group_by(individual_id, num_doses_time_2) %>%
       mutate(
         offset = min(tstart),
         tstart = tstart - offset,
@@ -242,11 +242,11 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
   event_date_col = paste0(event_col, "_date")
 
   # Add in endpoints
-  cohort_endpoints = select(endpoints, EAVE_LINKNO, !!sym(event_col), !!sym(event_date_col)) %>%
+  cohort_endpoints = select(endpoints, individual_id, !!sym(event_col), !!sym(event_date_col)) %>%
     # Only use events that happened in the study period
     filter(!!sym(event_date_col) >= study_start & !!sym(event_date_col) <= study_end) %>%
     # Get date of first event
-    group_by(EAVE_LINKNO) %>%
+    group_by(individual_id) %>%
     mutate(!!sym(event_date_col) := min(!!sym(event_date_col), na.rm = TRUE)) %>%
     ungroup() %>%
     distinct()
@@ -265,10 +265,10 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
     # The exact amount of time you add on doesn't matter when fitting Cox model, only the ordering.
     mutate(surv_time = ifelse(surv_time == 0, 0.001, surv_time))
 
-  df = tmerge(df, df, id = EAVE_LINKNO, event = event(surv_time, event))
+  df = tmerge(df, df, id = individual_id, event = event(surv_time, event))
 
   # dataframe of start times for different vaccination status
-  df_vs = select(df, EAVE_LINKNO, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5) %>%
+  df_vs = select(df, individual_id, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5) %>%
     mutate(
       vacc_0 = -Inf,
       vacc_1 = as.numeric(date_vacc_1 - study_start),
@@ -287,7 +287,7 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
 
   # Add calendar period as a time-dependent variable
   # dataframe of start times for different calendar periods
-  # df_calendar = select(df, EAVE_LINKNO)
+  # df_calendar = select(df, individual_id)
   #
   # calendar_start = seq(study_start, max(df$surv_date), make_difftime(calendar_days * 24 * 60 * 60, 'days'))
   #
@@ -299,11 +299,11 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
   #                            names_to = 'calendar', values_to = 'time')
 
   # Add in vaccination status as a time dependent variable
-  df = tmerge(df, df_vs, id = EAVE_LINKNO, exposure = tdc(time, vs)) %>%
+  df = tmerge(df, df_vs, id = individual_id, exposure = tdc(time, vs)) %>%
     rename(vs_time = exposure)
 
   # Add in calendar period as a time dependent variable
-  # df = tmerge(df, df_calendar, id = EAVE_LINKNO, exposure = tdc(time, calendar)) %>%
+  # df = tmerge(df, df_calendar, id = individual_id, exposure = tdc(time, calendar)) %>%
   #   rename(calendar = exposure)
 
   df = mutate(df,
@@ -481,7 +481,7 @@ for (age_gp in c('5-17', '18-74', '75+')){
 # 
 # df_cohort = df_cohort %>%
 #   filter(age_group_2 == "18-74")
-# df_cohort = filter(df_cohort, EAVE_LINKNO %in% sample(df_cohort$EAVE_LINKNO, 10000)) %>%
+# df_cohort = filter(df_cohort, individual_id %in% sample(df_cohort$individual_id, 10000)) %>%
 #   droplevels()
 # 
 # df_survival = create_df_survival(df_cohort,
@@ -490,7 +490,7 @@ for (age_gp in c('5-17', '18-74', '75+')){
 # 
 # # # Check everything is ok - verify that bob is indeed one's uncle
 # bob = select(
-#   df_survival, EAVE_LINKNO, age_group_2, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
+#   df_survival, individual_id, age_group_2, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
 #   vacc_type_1, vacc_type_2, vacc_type_3, vacc_type_4, vacc_type_5,
 #   num_doses_start, num_doses_recent, vacc_seq_start, vacc_seq_recent,
 #   vs_start, vs_recent, fully_vaccinated, vs_mixed_start, event, surv_date,

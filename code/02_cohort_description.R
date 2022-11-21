@@ -407,7 +407,7 @@ ggsave(paste0(output_dir, 'vacc_count_by_week_dose_age_group.png'), height = 10)
 d_vacc_diff =
   df_cohort %>%
   select(
-    EAVE_LINKNO,
+    individual_id,
     age_group,
     dose1    = date_vacc_1,
     dose2    = date_vacc_2,
@@ -476,7 +476,7 @@ d_mstate_vacc =
     study_end = study_end
   ) %>%
   select(
-    EAVE_LINKNO,
+    individual_id,
     age_group,
     `Dose 1`    = date_vacc_1,
     `Dose 2`   = date_vacc_2,
@@ -501,15 +501,15 @@ d_mstate_vacc =
   )) %>%
   select(-end_follow_up) %>%
   pivot_longer(
-    cols           = c(-EAVE_LINKNO, -age_group),
+    cols           = c(-individual_id, -age_group),
     names_to       = "event_name",
     values_to      = "event_date",
     values_drop_na = TRUE
   ) %>%
   # add row number for alf
   lazy_dt() %>%
-  arrange(EAVE_LINKNO, event_date) %>%
-  group_by(EAVE_LINKNO) %>%
+  arrange(individual_id, event_date) %>%
+  group_by(individual_id) %>%
   mutate(alf_seq = row_number()) %>%
   as_tibble() %>%
   # define survival columns
@@ -552,7 +552,7 @@ d_mstate_vacc %>% tabyl(state_from, state_to)
 mstate_vacc = survfit(
   formula = Surv(tstart, tstop, state_to) ~ age_group,
   data = d_mstate_vacc,
-  id = EAVE_LINKNO
+  id = individual_id
 )
 
 
