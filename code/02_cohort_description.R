@@ -13,6 +13,7 @@ library(dtplyr)
 library(janitor)
 library(survival)
 library(broom)
+library(scales)
 
 setwd("/conf/EAVE/GPanalysis/analyses/under_vaccinated")
 
@@ -25,30 +26,31 @@ if (!dir.exists(output_dir)) {
 }
 
 # List of QCovid risk group variable names
-rgs =setdiff(q_names, c("Q_BMI", "Q_ETHNICITY"))
+rgs = setdiff(q_names, "Q_BMI")
 
 # List of binary variables that will appear in summary tables
-bin_vars =setdiff(rgs, c("Q_HOME_CAT", "Q_LEARN_CAT", "Q_DIAG_CKD_LEVEL"))
+bin_vars = setdiff(rgs, c("Q_HOME_CAT", "Q_LEARN_CAT", "Q_DIAG_CKD_LEVEL", "Q_ETHNICITY"))
 
 # Names of variables that will be displayed in table
 var_names =c(
   "Total N (%)",
-  "Sex",
-  "ageYear",
+  "sex",
+  "age",
   "age_group",
   "simd2020_sc_quintile",
-  "ur6_2016_name",
+  "urban_rural_class",
+  "mean_household_age",
+  "num_ppl_household",
   "n_risk_gps",
-  "ave_hh_age",
-  "n_hh_gp",
   "bmi_cat",
-  "EAVE_Smoke",
-  "EAVE_BP",
-  rgs
+  rgs,
+  "smoking_status",
+  "blood_pressure"
 )
 
 # Display names for Qcovid groups in the table
 q_display_names =c(
+  "Ethnicity",
   "Housing category",
   "Learning disability/Down's syndrome",
   "Chronic Kidney Disease",
@@ -89,13 +91,13 @@ display_names =c(
   "Age group",
   "Socioeconomic status",
   "Urban rural classification",
-  "Number of risk groups",
-  "Average household age",
+  "Mean household age",
   "Number of people in household",
+  "Number of risk groups",
   "BMI",
+  q_display_names,
   "Smoking status",
-  "Blood pressure",
-  q_display_names
+  "Blood pressure"
 )
 
 # This will be used for changing variables names to display names
@@ -173,7 +175,7 @@ summary_tbl_wt_chrt = summary_tbl_wt_chrt %>%
 summary_tbl_wt_chrt$label = names_map[summary_tbl_wt_chrt$label]
 summary_tbl_wt_chrt$label = replace_na(summary_tbl_wt_chrt$label, '')
 
-write.csv(summary_tbl_wt_chrt ,paste0(output_dir, '/summary_table_weights_cohort_2.csv'), row.names = F)
+write.csv(summary_tbl_wt_chrt ,paste0(output_dir, '/summary_table_weights_cohort.csv'), row.names = F)
 
 
 
@@ -345,9 +347,10 @@ summary_tbl_wt_chrt_over_75$label = replace_na(summary_tbl_wt_chrt_over_75$label
 
 write.csv(summary_tbl_wt_chrt_over_75, paste0(output_dir, "/summary_table_weights_cohort_over_75.csv"), row.names = F)
 
+
+
 #### Vaccine uptake visualiations
 # Stu's code
-
 
 ## Vaccinations by age group and week
 d_study_weeks = seq(
@@ -391,9 +394,13 @@ d_vacc_week %>%
   geom_line() + 
   xlab('') + 
   ylab('') + 
-  labs(color ='Dose') 
+  labs(color ='Dose') +
+  scale_y_continuous(labels = scales::comma) +
+  xlab('Date') + 
+  ylab('Count')
 
-ggsave(paste0(output_dir, 'vacc_count_by_week_dose_age_group.png'))
+
+ggsave(paste0(output_dir, 'vacc_count_by_week_dose_age_group.png'), height = 10)
 
 
 ## Time between vaccinations
@@ -436,16 +443,18 @@ d_vacc_diff =
   ) %>%
   count(age_group, dose_to_dose, diff_weeks)
 
-
 d_vacc_diff %>%
   ggplot(aes(
     x = diff_weeks,
     y = n,
   )) +
   facet_grid(age_group ~ dose_to_dose, scales = "free") +
-  geom_col()
+  geom_col() +
+  scale_y_continuous(labels = scales::comma) +
+  xlab('Weeks') + 
+  ylab('Count')
 
-ggsave(paste0(output_dir, 'time_between_doses.png'))
+ggsave(paste0(output_dir, 'time_between_doses.png'), height = 10, width = 10)
 
 
 ### Uptake cumulative incidence
@@ -463,7 +472,7 @@ lkp_events = c(
 d_mstate_vacc =
   df_cohort %>%
   mutate(
-    Death = NRS.Date.Death,
+    Death = date_death,
     study_end = study_end
   ) %>%
   select(
@@ -570,5 +579,4 @@ mstate_vacc %>%
   ylab('Cumulative incidence') +
   xlab('Day')
 
-ggsave(paste0(output_dir, 'uptake_cumulative_incidence.png'))
-
+ggsave(paste0(output_dir, 'uptake_cumulative_incidence.png'), height = 10)

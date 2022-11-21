@@ -33,17 +33,21 @@ Mode = function(x) {
 
 EAVE_cohort = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort_Demog_Endpoints_Dates2021-07-28.rds")) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  select(EAVE_LINKNO:ur6_2016_name)
+  select(EAVE_LINKNO:ur6_2016_name) %>%
+  rename(sex = Sex,
+         age = ageYear,
+         urban_rural_class = ur6_2016_name)
 
 EAVE_Weights = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/CR_Cohort_Weights.rds"))
 
 # Get qcovid risk groups
 qcovid_rg = readRDS(paste0(Location, "EAVE/GPanalysis/data/cleaned_data/QCOVID_feb22.rds")) %>%
   select(-Age, -Sex) %>%
-  mutate(Q_BMI = as.numeric(Q_BMI)) %>%
+  mutate(
+    Q_BMI = as.numeric(Q_BMI)
+  ) %>%
   # Drop diabetes 1 and 2 cateogries because they are not useable
-  # Ethnicity is not reliable
-  select(-Q_DIAG_DIABETES_1, -Q_DIAG_DIABETES_2, -Q_ETHNICITY)
+  select(-Q_DIAG_DIABETES_1, -Q_DIAG_DIABETES_2)
 
 # Get old QCovid risk groups. We will use this for diabetes only, because diabetes grouping
 # from more recent QCovid extract are not useable
@@ -52,28 +56,29 @@ qcovid_diabetes = readRDS("/conf/EAVE/GPanalysis/progs/CR/Vaccine/output/temp/Qc
 
 qcovid_rg = full_join(qcovid_rg, qcovid_diabetes)
 
-# Get EAVE_BP and EAVE_Smoke risk groups
+# Get blood pressure and smoking risk groups
 eave_rg = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/CR_Cohort_RG_EAVE_BP_Smoke.rds")) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
   select(EAVE_LINKNO, EAVE_Smoking_Status_Worst, EAVE_BP) %>%
-  rename(EAVE_Smoke = EAVE_Smoking_Status_Worst) %>%
+  rename(smoking_status = EAVE_Smoking_Status_Worst,
+         blood_pressure = EAVE_BP) %>%
   mutate(
-    EAVE_Smoke = as.character(EAVE_Smoke),
-    EAVE_BP = as.character(EAVE_BP)
+    smoking_status = as.character(smoking_status),
+    blood_pressure = as.character(blood_pressure)
   ) %>%
   mutate(
-    EAVE_Smoke = case_when(
-      EAVE_Smoke == "Unknown" ~ NA_character_,
-      TRUE ~ EAVE_Smoke
+    smoking_status = case_when(
+      smoking_status == "Unknown" ~ NA_character_,
+      TRUE ~ smoking_status
     ),
-    EAVE_BP = case_when(
-      EAVE_BP == "No Investigation" ~ NA_character_,
-      TRUE ~ EAVE_BP
+    blood_pressure = case_when(
+      blood_pressure == "No Investigation" ~ NA_character_,
+      TRUE ~ blood_pressure
     )
   ) %>%
   mutate(
-    EAVE_Smoke = as.factor(EAVE_Smoke),
-    EAVE_BP = as.factor(EAVE_BP)
+    smoking_status = as.factor(smoking_status),
+    blood_pressure = as.factor(blood_pressure)
   )
 
 # Combine risk groups
@@ -97,6 +102,7 @@ lft = readRDS(paste0(Location, "EAVE/GPanalysis/data/lft_positives.rds")) %>%
 
 # All deaths
 all_deaths = readRDS(paste0(Location, "EAVE/GPanalysis/data/all_deaths.rds")) %>%
+  rename(date_death = NRS.Date.Death) %>%
   rowwise() %>%
   mutate(covid_death = ifelse(rowSums(across(UNDERLYING_CAUSE_OF_DEATH:CAUSE_OF_DEATH_CODE_9, ~ .x %in% c("U071", "U072")), na.rm = T) > 0, 1, 0))
 
@@ -191,11 +197,15 @@ ever_shielding = readRDS(paste0(Location, "/EAVE/GPanalysis/data/cleaned_data/C1
 
 # Household information (from Sept 2020)
 Cohort_Household = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort_Household.rds")) %>%
-  mutate(n_hh_gp = cut(n_hh,
+  rename(mean_household_age = ave_hh_age) %>%
+  mutate(num_ppl_household = cut(n_hh,
     breaks = c(0, 1, 2, 5, 10, 30, 100, max(n_hh)),
     labels = c("1", "2", "3-5", "6-10", "11-30", "31-100", "101+")
   )) %>%
-  mutate(ave_hh_age = if_else(is.na(ave_hh_age), mean(ave_hh_age, na.rm = T), ave_hh_age))
+  mutate(mean_household_age = if_else(is.na(mean_household_age), mean(mean_household_age, na.rm = T), mean_household_age))
+
+# Whole genome sequencing
+wgs = readRDS(paste0(Location, "EAVE/GPanalysis/data/WGS_latest.rds")) 
 
 # Endpoints
 endpoints = covid_hospitalisations %>%
@@ -203,7 +213,7 @@ endpoints = covid_hospitalisations %>%
   mutate(covid_hosp = 1) %>%
   full_join(all_deaths %>%
     filter(covid_death == 1) %>%
-    rename(covid_death_date = NRS.Date.Death) %>%
+    rename(covid_death_date = date_death) %>%
     select(EAVE_LINKNO, covid_death, covid_death_date)) %>%
   mutate(covid_hosp_death = case_when(
     covid_hosp == 1 | covid_death == 1 ~ 1,
@@ -221,20 +231,20 @@ endpoints = covid_hospitalisations %>%
 
 df_cohort = EAVE_cohort %>%
   # Original cohort is from approximately 2 years ago. Update their age.
-  mutate(ageYear = ageYear + 2) %>%
-  filter(ageYear >= 5) %>%
+  mutate(age = age + 2) %>%
+  filter(age >= 5) %>%
   mutate(
-    age_group = cut(ageYear,
+    age_group = cut(age,
       breaks = c(5, 12, 16, 75, Inf),
       labels = c("5-11", "12-15", "16-74", "75+"),
       right = FALSE
     ),
-    age_group_2 = cut(ageYear,
+    age_group_2 = cut(age,
                     breaks = c(5, 18, 75, Inf),
                     labels = c("5-17", "18-74", "75+"),
                     right = FALSE
     ),
-    age_group_3 = cut(ageYear,
+    age_group_3 = cut(age,
       breaks = c(5, 12, 16, 18, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, Inf),
       labels = c(
         "5-11", "12-15", "16-17", "18-24", "25-29", "30-34", "35-39", "40-44", "45-49", "50-54",
@@ -262,7 +272,6 @@ df_cohort = mutate(df_cohort,
     include.lowest = TRUE,
     right = FALSE
 ))
-
 
 # Add vaccinations
 df_cohort = left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
@@ -302,7 +311,7 @@ df_cohort = left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
       ifelse(!is.na(vacc_type_5) & date_vacc_5 <= study_start, vacc_type_5, "")
     ),
     # Whether they had mixed vaccines according to most recent data, up to fifth dose
-    mixed_vacc_start = case_when(
+    mixed_vacc_recent = case_when(
       num_doses_recent == 0 ~ 0,
       num_doses_recent == 1 ~ 0,
       vacc_type_2 != vacc_type_1 ~ 1,
@@ -339,11 +348,6 @@ df_cohort = left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
 
 # Count all combinations of vaccines that anyone has received
 vacc_seq_start_count = count(df_cohort, vacc_seq_start)
-
-# vacc_seq_start_count_pruned will be used in defining a mixed vaccine status variable
-# Sequences of vaccines that occur in vacc_seq_start_count_pruned will be encoded in this 
-# vaccine status variable. Otherwise, it will just be called mixed.
-#vacc_seq_start_count_pruned = filter(vacc_seq_start_count, n >= 1000)
 
 # More vaccine related derived variables
 df_cohort = mutate(df_cohort,
@@ -423,12 +427,12 @@ df_cohort = mutate(df_cohort,
 
 # Add household characteristics
 df_cohort = Cohort_Household %>%
-  select(EAVE_LINKNO, n_hh_gp, ave_hh_age) %>%
+  select(EAVE_LINKNO, num_ppl_household, mean_household_age) %>%
   right_join(df_cohort)
 
 # Add deaths from any cause
 df_cohort = all_deaths %>%
-  select(EAVE_LINKNO, NRS.Date.Death, covid_death) %>%
+  select(EAVE_LINKNO, date_death, covid_death) %>%
   right_join(df_cohort) %>%
   mutate(covid_death = replace_na(covid_death, 0))
 
@@ -444,40 +448,75 @@ df_cohort = endpoints %>%
     TRUE ~ 0
   ))
 
-# Add most recent positive test
-df_cohort = filter(cdw, test_result == "POSITIVE") %>%
+
+# This step is acquiring duplicates!
+# Add in time since last positive test and variant of last positive test
+df_cohort = filter(cdw, date_ecoss_specimen < study_start & test_result == "POSITIVE") %>%
   select(EAVE_LINKNO, date_ecoss_specimen) %>%
+  left_join(wgs %>% 
+    select(
+      EAVE_LINKNO,
+      date_ecoss_specimen = Collection_Date,
+      last_positive_variant = lineage) %>%
+    mutate(
+      last_positive_variant = case_when(
+        last_positive_variant == "B.1.1.7" ~ "Alpha",
+        last_positive_variant == "B.1.617.2" ~ "Delta",
+        last_positive_variant %in% c('BA.1', 'BA.2', 'BA.3', 'BA.4', 'BA.5') ~ "Omicron",
+        TRUE ~ "Other"))
+    ) %>%
   arrange(EAVE_LINKNO, desc(date_ecoss_specimen)) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  mutate(last_positive_test = as.numeric(study_start - date_ecoss_specimen)) %>%
-  select(EAVE_LINKNO, last_positive_test) %>%
   right_join(df_cohort) %>%
-  mutate(last_positive_test_group = cut(last_positive_test,
+  mutate(
+    last_positive_test = as.numeric(study_start - date_ecoss_specimen),
+    last_positive_variant = case_when( 
+      is.na(date_ecoss_specimen) ~ 'never_positive',
+      is.na(last_positive_variant) ~ "not_sequenced",
+      TRUE ~ last_positive_variant)
+) %>%
+  mutate(last_positive_test_group = as.character(cut(last_positive_test,
     breaks = c(0, 92, 183, Inf),
     labels = c("0-13_weeks", "14-26_weeks", "27+_weeks"),
     right = FALSE
-  )) %>%
-  # Make NA a level for last positive test group
-  mutate(last_positive_test_group = addNA(last_positive_test_group)) %>%
-  mutate(last_positive_test_group = fct_relevel(last_positive_test_group, NA))
+  ))) %>%
+  mutate(last_positive_test_group = ifelse(is.na(last_positive_test_group), 'never_positive', last_positive_test_group)) %>%
+  mutate(last_positive_test_group = factor(last_positive_test_group, c("never_positive", "0-13_weeks", "14-26_weeks", "27+_weeks")),
+         last_positive_variant = factor(last_positive_variant, c('never_positive', 'not_sequenced', 'Alpha', 'Delta', 'Omicron')))
 
-# Add number of PCR tests in last 6 months
-df_cohort = filter(cdw, date_ecoss_specimen >= study_start %m-% months(6)) %>%
+# Add number of PCR tests in last 6 months before study_start
+df_cohort = filter(cdw, date_ecoss_specimen >= study_start %m-% months(6) & date_ecoss_specimen < study_start) %>%
   count(EAVE_LINKNO) %>%
-  rename(num_tests = n) %>%
-  select(EAVE_LINKNO, num_tests) %>%
+  rename(num_tests_6m = n) %>%
+  select(EAVE_LINKNO, num_tests_6m) %>%
   right_join(df_cohort) %>%
-  mutate(num_tests = replace_na(num_tests, 0)) %>%
-  mutate(num_tests_6m_group = cut(num_tests,
+  mutate(num_tests_6m = replace_na(num_tests_6m, 0)) %>%
+  mutate(num_tests_6m_group = cut(num_tests_6m,
     breaks = c(0, 1, 2, 3, 4, 10, Inf),
     labels = c("0", "1", "2", "3", "4-9", "10+"),
     right = FALSE
   ))
 
+
+# Add number of positive PCR tests in last 6 months before study_start
+df_cohort = filter(cdw, date_ecoss_specimen >= study_start %m-% months(6) & date_ecoss_specimen < study_start & test_result == 'POSITIVE') %>%
+  count(EAVE_LINKNO) %>%
+  rename(num_pos_tests_6m = n) %>%
+  select(EAVE_LINKNO, num_pos_tests_6m) %>%
+  right_join(df_cohort) %>%
+  mutate(num_pos_tests_6m = replace_na(num_pos_tests_6m, 0)) %>%
+  mutate(num_pos_tests_6m = cut(num_pos_tests_6m,
+                                  breaks = c(0, 1, 2,  Inf),
+                                  labels = c("0", "1", "2+"),
+                                  right = FALSE
+  ))
+
+
 # Add shielding list
 df_cohort = ever_shielding %>%
   right_join(df_cohort) %>%
   mutate(shielding = replace_na(shielding, 0))
+
 
 # Re-weight, taking into account contact with healthcare
 # Load in other datasets that indicate contact with healthcare
@@ -494,7 +533,8 @@ z_ids = c(
   sicsag$EAVE_LINKNO,
   smr$EAVE_LINKNO,
   lft$EAVE_LINKNO,
-  pis$EAVE_LINKNO
+  pis$EAVE_LINKNO,
+  wgs$EAVE_LINKNO
 ) %>%
   unique()
 
@@ -511,16 +551,24 @@ rm(bnf, sicsag, pis)
 # Create a list of cols where NA means 0
 q_names = grep("Q", names(df_cohort), value = TRUE)
 
-df_cohort = mutate_at(df_cohort, q_names, ~ as.numeric(.))
-
 cols = setdiff(q_names, c("Q_BMI", "Q_ETHNICITY"))
 cols = c("covid_hosps", "covid_death", cols)
+
+df_cohort = mutate_at(df_cohort, cols, ~ as.numeric(.))
 
 df_cohort = mutate_at(df_cohort, cols, ~ case_when(
   is.na(.) ~ 0,
   TRUE ~ .
 )) %>%
   mutate(
+    # Ethnicity coding taken from QCovid algorithm
+    Q_ETHNICITY = case_when(
+      Q_ETHNICITY %in% c(1, 2, 3) ~ 'White',
+      Q_ETHNICITY %in% c(4, 5, 6, 7) ~ 'Mixed',
+      Q_ETHNICITY %in% c(8, 9, 10, 11, 15) ~ 'Asian',
+      Q_ETHNICITY %in% c(12, 13, 14) ~ 'Black',
+      Q_ETHNICITY == 16 ~ 'Other',
+      TRUE ~ NA_character_),
     Q_HOME_CAT = case_when(
       Q_HOME_CAT == 0 ~ "Neither",
       Q_HOME_CAT == 1 ~ "Care home",
@@ -553,36 +601,35 @@ df_cohort = mutate(df_cohort,
          num_doses_start = factor(num_doses_start),
          num_doses_recent = factor(num_doses_recent))
 
-
-df_cohort = mutate_at(df_cohort, c("EAVE_Smoke", "EAVE_BP"), ~ as.character(.)) %>%
+df_cohort = mutate_at(df_cohort, c("smoking_status", "blood_pressure"), ~ as.character(.)) %>%
   mutate(
-    EAVE_Smoke = case_when(
-      EAVE_Smoke == "Ex Smoker" ~ "Ex-smoker",
-      EAVE_Smoke == "Non Smoker" ~ "Non-smoker",
-      TRUE ~ EAVE_Smoke
+    smoking_status = case_when(
+      smoking_status == "Ex Smoker" ~ "Ex-smoker",
+      smoking_status == "Non Smoker" ~ "Non-smoker",
+      TRUE ~ smoking_status
     ),
-    EAVE_BP = case_when(
-      EAVE_BP == "Very High" ~ "Very high",
-      TRUE ~ EAVE_BP
+    blood_pressure = case_when(
+      blood_pressure == "Very High" ~ "Very high",
+      TRUE ~ blood_pressure
     ),
-    ur6_2016_name = case_when(
-      ur6_2016_name == "1 Large Urban Areas" ~ "Large Urban Areas",
-      ur6_2016_name == "2 Other Urban Areas" ~ "Other Urban Areas",
-      ur6_2016_name == "3 Accessible Small Towns" ~ "Accessible Small Towns",
-      ur6_2016_name == "4 Remote Small Towns" ~ "Remote Small Towns",
-      ur6_2016_name == "5 Accessible Rural" ~ "Accessible Rural",
-      ur6_2016_name == "6 Remote Rural" ~ "Remote Rural"
+    urban_rural_class = case_when(
+      urban_rural_class == "1 Large Urban Areas" ~ "Large Urban Areas",
+      urban_rural_class == "2 Other Urban Areas" ~ "Other Urban Areas",
+      urban_rural_class == "3 Accessible Small Towns" ~ "Accessible Small Towns",
+      urban_rural_class == "4 Remote Small Towns" ~ "Remote Small Towns",
+      urban_rural_class == "5 Accessible Rural" ~ "Accessible Rural",
+      urban_rural_class == "6 Remote Rural" ~ "Remote Rural"
     )
   ) %>%
-  mutate_at(c("EAVE_Smoke", "EAVE_BP"), ~ as.factor(.)) %>%
+  mutate_at(c("smoking_status", "blood_pressure"), ~ as.factor(.)) %>%
   mutate(
-    EAVE_Smoke = fct_relevel(EAVE_Smoke, "Non-smoker"),
-    EAVE_BP = fct_relevel(EAVE_BP, "Normal", "Low", "High", "Very high"),
+    smoking_status = fct_relevel(smoking_status, "Non-smoker"),
+    blood_pressure = fct_relevel(blood_pressure, "Normal", "Low", "High", "Very high"),
     Q_HOME_CAT = fct_relevel(Q_HOME_CAT, "Neither"),
     Q_LEARN_CAT = fct_relevel(Q_LEARN_CAT, "Neither"),
     Q_DIAG_CKD_LEVEL = fct_relevel(Q_DIAG_CKD_LEVEL, "No CKD"),
-    ur6_2016_name = fct_relevel(
-      ur6_2016_name, "Large Urban Areas",
+    urban_rural_class = fct_relevel(
+      urban_rural_class, "Large Urban Areas",
       "Other Urban Areas",
       "Accessible Small Towns",
       "Remote Small Towns",
@@ -596,24 +643,90 @@ df_cohort = mutate_at(df_cohort, c("EAVE_Smoke", "EAVE_BP"), ~ as.character(.)) 
 # Check NA
 sapply(df_cohort, function(x) sum(is.na(x)))
 
+
 df_cohort = as.data.frame(df_cohort)
 
-# df_cohort has the following columns:
-#
-# [1] "EAVE_LINKNO"              "shielding"                "num_tests"                "last_positive_test"       "covid_hosps"             
-# [6] "NRS.Date.Death"           "covid_death"              "n_hh_gp"                  "ave_hh_age"               "Sex"                     
-# [11] "ageYear"                  "simd2020_sc_quintile"     "DataZone"                 "ur6_2016_name"            "age_group"               
-# [16] "age_group_2"              "age_group_3"              "eave_weight"              "Q_BMI"                    "Q_HOME_CAT"              
-# [21] "Q_LEARN_CAT"              "Q_DIAG_CKD_LEVEL"         "Q_DIAG_AF"                "Q_DIAG_ASTHMA"            "Q_DIAG_BLOOD_CANCER"     
-# [26] "Q_DIAG_CCF"               "Q_DIAG_CEREBRALPALSY"     "Q_DIAG_CHD"               "Q_DIAG_CIRRHOSIS"         "Q_DIAG_CONGEN_HD"        
-# [31] "Q_DIAG_COPD"              "Q_DIAG_DEMENTIA"          "Q_DIAG_EPILEPSY"          "Q_DIAG_FRACTURE"          "Q_DIAG_HIV_AIDS"         
-# [36] "Q_DIAG_IMMU"              "Q_DIAG_NEURO"             "Q_DIAG_PARKINSONS"        "Q_DIAG_PULM_HYPER"        "Q_DIAG_PULM_RARE"        
-# [41] "Q_DIAG_PVD"               "Q_DIAG_RA_SLE"            "Q_DIAG_RESP_CANCER"       "Q_DIAG_SEV_MENT_ILL"      "Q_DIAG_SICKLE_CELL"      
-# [46] "Q_DIAG_STROKE"            "Q_DIAG_VTE"               "n_risk_gps"               "Q_DIAG_DIABETES_1"        "Q_DIAG_DIABETES_2"       
-# [51] "EAVE_Smoke"               "EAVE_BP"                  "bmi_cat"                  "date_vacc_1"              "date_vacc_2"             
-# [56] "date_vacc_3"              "date_vacc_4"              "date_vacc_5"              "vacc_type_1"              "vacc_type_2"             
-# [61] "vacc_type_3"              "vacc_type_4"              "vacc_type_5"              "vacc_type_NA"             "vacc_type_6"             
-# [66] "vacc_type_7"              "num_doses_recent"         "num_doses_start"          "vacc_seq_recent"          "vacc_seq_start"          
-# [71] "mixed_vacc_start"         "vs_recent"                "vs_start"                 "fully_vaccinated"         "vs_mixed_start"          
-# [76] "vs_mixed_recent"          "covid_hosp_ever"          "last_positive_test_group" "num_tests_6m_group"
+#### df_cohort has the following columns:
+
+# [1] "EAVE_LINKNO"              "shielding"                "num_pos_tests_6m"         "num_tests_6m"             "date_ecoss_specimen"     
+# [6] "last_positive_variant"    "covid_hosps"              "date_death"               "covid_death"              "num_ppl_household"       
+# [11] "mean_household_age"       "sex"                      "age"                      "simd2020_sc_quintile"     "DataZone"                
+# [16] "urban_rural_class"        "age_group"                "age_group_2"              "age_group_3"              "eave_weight"             
+# [21] "Q_BMI"                    "Q_ETHNICITY"              "Q_HOME_CAT"               "Q_LEARN_CAT"              "Q_DIAG_CKD_LEVEL"        
+# [26] "Q_DIAG_AF"                "Q_DIAG_ASTHMA"            "Q_DIAG_BLOOD_CANCER"      "Q_DIAG_CCF"               "Q_DIAG_CEREBRALPALSY"    
+# [31] "Q_DIAG_CHD"               "Q_DIAG_CIRRHOSIS"         "Q_DIAG_CONGEN_HD"         "Q_DIAG_COPD"              "Q_DIAG_DEMENTIA"         
+# [36] "Q_DIAG_EPILEPSY"          "Q_DIAG_FRACTURE"          "Q_DIAG_HIV_AIDS"          "Q_DIAG_IMMU"              "Q_DIAG_NEURO"            
+# [41] "Q_DIAG_PARKINSONS"        "Q_DIAG_PULM_HYPER"        "Q_DIAG_PULM_RARE"         "Q_DIAG_PVD"               "Q_DIAG_RA_SLE"           
+# [46] "Q_DIAG_RESP_CANCER"       "Q_DIAG_SEV_MENT_ILL"      "Q_DIAG_SICKLE_CELL"       "Q_DIAG_STROKE"            "Q_DIAG_VTE"              
+# [51] "n_risk_gps"               "Q_DIAG_DIABETES_1"        "Q_DIAG_DIABETES_2"        "smoking_status"           "blood_pressure"          
+# [56] "bmi_cat"                  "date_vacc_1"              "date_vacc_2"              "date_vacc_3"              "date_vacc_4"             
+# [61] "date_vacc_5"              "vacc_type_1"              "vacc_type_2"              "vacc_type_3"              "vacc_type_4"             
+# [66] "vacc_type_5"              "vacc_type_NA"             "vacc_type_6"              "vacc_type_7"              "num_doses_recent"        
+# [71] "num_doses_start"          "vacc_seq_recent"          "vacc_seq_start"           "mixed_vacc_recent"        "mixed_vacc_start"        
+# [76] "vs_recent"                "vs_start"                 "fully_vaccinated"         "vs_mixed_start"           "vs_mixed_recent"         
+# [81] "covid_hosp_ever"          "last_positive_test"       "last_positive_test_group" "num_tests_6m_group" 
+
+
+#### Variable descriptions
+
+# EAVE_LINKNO is an individual identifier
+
+# shielding is whether they have ever been on the shielding list
+
+# num_pos_tests_6m is the number of positive tests they have had in the last 6 months before study_start
+# Its levels are: 0, 1, 2+
+
+# num_tests_6m is integer - number of tests they have had in the last 6 months before study_start
+
+# num_tests_6m_group has the following levels:
+# 0, 1, 2, 3, 4-9, 10+
+
+# last_positive_test_group has the following levels:
+# never_positive, 0-13_weeks, 14-26_weeks, 27+_weeks
+
+# covid_hosps is integer - number of covid hospitalisations they have ever had
+
+# simd2020_sc_quintile is their quintile of the Scottish index of multiple deprivation
+# 1 is the most deprived, 5 is the least deprived
+
+# urban_rural_class has the following levels:
+# Large Urban Areas
+# Other Urban Areas
+# Accessible Small Towns
+# Remote Small Towns
+# Accessible Rural
+# Remote Rural
+
+# bmi_cat is their body mass index cateogry, and has the following levels:
+# 10-18.5, 18.5-25, 25-30, 30-35, 35-40, 40+
+
+# age_group has the following levels:
+# 5-11, 12-15, 16-74, 75+
+
+# age_group_2 has the following levels:
+# 5-17, 18-74, 75+
+
+# age_group_3 has the following levels:
+# 5-11, 12-15, 16-17, 18-24, 25-29, 30-34, 35-39, 40-44, 
+# 45-49, 50-54, 55-59, 60-64, 65-69, 70-74, 75-79, 80-84, 85+
+
+# num_doses_recent is the number of vaccine doses they have had according to most recent data
+# num_doses_start is the number of doses they had at study_start
+
+# vacc_seq_recent is the sequence of vaccine types they have received according to most recent data
+# vacc_seq_start is the sequence of vaccine types they had received at study_start
+
+# mixed_vacc_start is a binary variable indicating whether they have had any mixed vaccine type at study start
+
+# vs_recent is the dose number and type of the last dose they had according to most recent data
+# vs_start is the dose number and type of the last dose they had at study_start
+
+# fully_vaccinated is a binary variable indicating whether they have had the recommended
+# vaccine schedule for their age group at study_start
+
+# vs_mixed_start is a more coarse_grained version of vacc_seq_start, with categories of vaccine sequences
+# detailed in the draft tables document
+# vs_mixed_recent is similar but for vacc_seq_recent
+
+# covid_hosp_ever is whether they have ever had a covid hospitalisation
 
