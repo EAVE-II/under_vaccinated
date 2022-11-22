@@ -25,15 +25,18 @@ names_map["urban_rural_class"] = "Urban/rural classification"
 #### Functions
 
 # Fit logistic model and saves results table, coefficients and covariance matrix
-lr_analysis = function(df_cohort, age_group, dep_var, ind_vars) {
+lr_analysis = function(df_cohort, age_gp, dep_var, ind_vars) {
 
   ## Logistic regression
-  dir = paste0(output_dir, "lr_undervaccination_", age_group)
+  dir = paste0(output_dir, "lr_undervaccination_", age_gp)
   if (!dir.exists(dir)) {
     dir.create(dir)
   }
 
-  df_cohort = filter(df_cohort, age_group == age_group) %>%
+  df_cohort = filter(
+    df_cohort, 
+      age_group == age_gp,
+      is.na(date_death) | date_death > study_start) %>%
     droplevels()
 
   # Weighted logistic regression
@@ -116,18 +119,17 @@ create_logistic_results_table = function(df_cohort, model, dep_var, ind_vars) {
 
 # Fits naive bayes model, saves graphs of fitted marginal distributions
 # ENGLAND NORTHERN IRELAND AND WALES DON'T HAVE TO DO THE NAIVE BAYES ESIMATION
-nb_analysis = function(df_cohort, age_group, dep_var, ind_vars) {
+nb_analysis = function(df_cohort, age_gp, dep_var, ind_vars) {
   dir = paste0(output_dir, "nb_undervaccination_", age_group)
   if (!dir.exists(dir)) {
     dir.create(dir)
   }
 
-  df_cohort = filter(df_cohort, age_group == age_group) %>%
+  df_cohort = filter(df_cohort, age_group == age_gp) %>%
     droplevels()
   
   formula = as.formula(paste(c(paste0(dep_var, " ~ "), ind_vars), collapse = " + "))
   nb_model = naive_bayes(formula, data = df_cohort, usekernel = T)
-
 
   for (var in ind_vars) {
     png(paste0(dir, "/", var, ".png"), width = 350, height = 350)
@@ -206,20 +208,19 @@ cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, stu
   # Weighted Cox model
   formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(ind_vars, collapse = " + ")))
   
-  # Throws errors for reasons unknown
-  # survey_design = svydesign(id = ~1,
-  #                           weights = ~ eave_weight,
-  #                           data = df_survival)
+  survey_design = svydesign(id = ~1,
+                            weights = ~ eave_weight,
+                            data = df_survival)
+
+  model = svycoxph( formula,
+                    design = survey_design,
+                    data = df_survival)
+  
+  # # Normalise weight to 1 so standard errors are not distorted
+  # df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
   # 
-  # model = svycoxph( formula,
-  #                   design = survey_design,
-  #                   data = df_survival)
-  
-  # Normalise weight to 1 so standard errors are not distorted
-  df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
-  
-  # Robust standard errors are used by default if weights are not all equal to 1
-  model = coxph(formula, data = df_survival, weights = eave_weight)
+  # # Robust standard errors are used by default if weights are not all equal to 1
+  # model = coxph(formula, data = df_survival, weights = eave_weight)
 
   # Results table
   write.csv(create_cox_results_table(df_survival, model, ind_vars), paste0(dir, "/results_table.csv"), row.names = FALSE)
@@ -392,8 +393,10 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
 lr_dep_var = "fully_vaccinated"
 lr_ind_vars = c("sex", "age_group_3", "urban_rural_class", "simd2020_sc_quintile", "n_risk_gps")
 
-lr_analysis(df_cohort, "5-11", lr_dep_var, lr_ind_vars)
-lr_analysis(df_cohort, "12-15", lr_dep_var, lr_ind_vars)
+# age_group_3 only has one category for 5-11 year olds and 12-15 year olds
+# - drop it as a predictor
+lr_analysis(df_cohort, "5-11", lr_dep_var, setdiff(lr_ind_vars, 'age_group_3'))
+lr_analysis(df_cohort, "12-15", lr_dep_var, setdiff(lr_ind_vars, 'age_group_3'))
 lr_analysis(df_cohort, "16-74", lr_dep_var, lr_ind_vars)
 lr_analysis(df_cohort, "75+", lr_dep_var, lr_ind_vars)
 

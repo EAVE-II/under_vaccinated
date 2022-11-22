@@ -389,6 +389,9 @@ d_vacc_week =
 
 
 d_vacc_week %>%
+  # Suppression
+  # Alter this depending on what the rules for your TRE are
+  mutate(n = if_else(1 <= n & n < 5, as.integer(3), n)) %>%
   ggplot(aes(x = dose_week, y = n, colour = dose_num)) +
   facet_wrap(~ age_group, ncol = 1, scales = "free_y") +
   geom_line() + 
@@ -444,6 +447,9 @@ d_vacc_diff =
   count(age_group, dose_to_dose, diff_weeks)
 
 d_vacc_diff %>%
+  # Suppression
+  # Alter this depending on what the rules for your TRE are
+  mutate(n = if_else(1 <= n & n < 5, as.integer(3), n)) %>%
   ggplot(aes(
     x = diff_weeks,
     y = n,
@@ -479,7 +485,7 @@ d_mstate_vacc =
     individual_id,
     age_group,
     `Dose 1`    = date_vacc_1,
-    `Dose 2`   = date_vacc_2,
+    `Dose 2`    = date_vacc_2,
     `Dose 3`    = date_vacc_3,
     `Dose 4`    = date_vacc_4,
     Death,
@@ -567,6 +573,10 @@ mstate_vacc %>%
       factor() %>%
       fct_recode("Unvaccinated" = "(s0)") %>%
       fct_relevel("Death")
+  ) %>%
+  # Convert time to date
+  mutate(
+  time = study_start + time
   ) %>%
   ggplot(aes(
     x = time,

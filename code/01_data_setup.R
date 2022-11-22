@@ -223,8 +223,7 @@ endpoints = covid_hospitalisations %>%
     covid_hosp_death == 1 ~ pmin(covid_hosp_date, covid_death_date, na.rm = TRUE),
     TRUE ~ as.Date(NA)
   )) %>%
-  distinct() %>%
-  rename(individual_id = EAVE_LINKNO)
+  distinct()
 
 
 
@@ -435,7 +434,7 @@ df_cohort = Cohort_Household %>%
 df_cohort = all_deaths %>%
   select(EAVE_LINKNO, date_death, covid_death) %>%
   right_join(df_cohort) %>%
-  mutate(covid_death = replace_na(covid_death, 0))
+  mutate(covid_death = replace_na(covid_death, 0)) 
 
 # Add in covid hospitalisations
 df_cohort = endpoints %>%
@@ -637,14 +636,15 @@ df_cohort = mutate_at(df_cohort, c("smoking_status", "blood_pressure"), ~ as.cha
     ),
     simd2020_sc_quintile = as.factor(as.character(simd2020_sc_quintile))
   ) %>%
-  rename(individual_id = EAVE_LINKNO)
+  rename(individual_id = EAVE_LINKNO) %>%
   data.frame()
+
+endpoints = rename(
+  endpoints,
+  individual_id = EAVE_LINKNO)
 
 # Check NA
 sapply(df_cohort, function(x) sum(is.na(x)))
-
-
-df_cohort = as.data.frame(df_cohort)
 
 #### df_cohort has the following columns:
 
@@ -669,7 +669,7 @@ df_cohort = as.data.frame(df_cohort)
 
 #### Variable descriptions
 
-# patient_id is what you think it is
+# individual_id is what you think it is
 
 # shielding is whether they have ever been on the shielding list
 
