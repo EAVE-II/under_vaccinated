@@ -1,8 +1,7 @@
 ######################################################################
 ## Title: [Insert full title of paper]
 ## Code author: Steven Kerr steven.kerr@ed.ac.uk
-## Description: Prediction of who is undervaccinated,
-##              and Cox model of severe outcomes
+## Description: Analysis of severe COVID-19 events
 ######################################################################
 
 library(naivebayes)
@@ -13,6 +12,11 @@ library(survey)
 
 output_dir = "./output/"
 
+# Pre-requisites
+# source('./output/01_data_setup.R')
+# The only thing needed from 02_cohort_description is names_map
+# source('./output/02_cohort_description.R')
+
 # Add more entries to names_map to automatically generate display names
 names_map["last_positive_test_group"] = "Last positive test"
 names_map["num_tests_6m_group"] = "Number of tests in last 6 months"
@@ -20,130 +24,13 @@ names_map["shielding"] = "Ever shielding"
 names_map["num_doses_time_2"] = "Number of doses"
 names_map["age_group_3"] = "Age group"
 names_map["covid_hosp_ever"] = "Previous COVID-19 hospitalisation"
-names_map["urban_rural_class"] = "Urban/rural classification"
+names_map["urban_rural_2cat"] = "Urban/rural classification"
 
 #### Functions
 
-# Fit logistic model and saves results table, coefficients and covariance matrix
-lr_analysis = function(df_cohort, age_gp, dep_var, ind_vars) {
-
-  ## Logistic regression
-  dir = paste0(output_dir, "lr_undervaccination_", age_gp)
-  if (!dir.exists(dir)) {
-    dir.create(dir)
-  }
-
-  df_cohort = filter(
-    df_cohort, 
-      age_group == age_gp,
-      is.na(date_death) | date_death > study_start) %>%
-    droplevels()
-
-  # Weighted logistic regression
-  formula = as.formula(paste(c(paste0(dep_var, " ~ "), ind_vars), collapse = " + "))
-  
-  survey_design = svydesign(id = ~1,
-                            weights = ~ eave_weight,
-                            data = df_cohort)
-  
-  model = svyglm(formula, design = survey_design, family = binomial, data = df_cohort)
-
-  # Coefficients
-  coef = data.frame("variable" = names(coef(model)), "coef" = coef(model), row.names = 1:length(coef(model)))
-  write.csv(coef, paste0(dir, "/coef.csv"), row.names = FALSE)
-
-  # Covariance matrix
-  cov = vcov(model)
-  write.csv(cov, paste0(dir, "/cov.csv"))
-
-  # Results table
-  write.csv(create_logistic_results_table(df_cohort, model, dep_var, ind_vars), paste0(dir, "/results.csv"), row.names = FALSE)
-}
-
-
-# Does what it says
-create_logistic_results_table = function(df_cohort, model, dep_var, ind_vars) {
-  df_vars = data.frame()
-
-  for (var in ind_vars) {
-    
-    Levels = as.character(levels( as.factor(pull(df_cohort, !!sym(var)))))
-    
-    #Levels = unique(pull(df_cohort, !!sym(var)))
-    
-    new_df = data.frame(Variable = var, Levels) %>%
-      mutate(
-        OR = case_when( Levels == as.character(levels( as.factor(pull(df_cohort, !!sym(var))))[1])  ~ 'Ref',
-          TRUE ~ NA_character_) )
-    
-
-    df_vars = bind_rows(df_vars, new_df)
-    
-    # df_vars = mutate(df_vars,
-    #   OR = case_when( Levels == as.character(levels( as.factor(pull(df_cohort, !!sym(var))))[1])  ~ 'Ref',
-    #                 TRUE ~ NA_character_) )
-  }
-
-  df_vars = mutate(
-    df_vars, 
-      term = paste0(Variable, Levels),
-      Variable = as.character(Variable)) %>%
-    filter(!is.na(Levels))
-
-  # Get ORs & 95% CIs
-  results = round(exp(cbind("OR" = coef(model), confint.default(model, level = 0.95), digits = 2)), digits = 2) %>%
-    as.data.frame() %>%
-    select(-digits)
-
-  names(results) = c("OR", "lower", "upper")
-
-  results = mutate(results, term = rownames(results))
-
-  results = mutate(results, OR = paste0(OR, " (", lower, ", ", upper, ")")) %>%
-    select(term, OR)
-  
-  results = left_join(df_vars, results, by = 'term') %>%
-    mutate(
-      OR = coalesce(OR.x, OR.y),
-      #OR = replace_na(OR, "Ref"),
-      Variable = names_map[Variable] ,
-      Variable = case_when(
-        !duplicated(Variable) ~ Variable,
-        TRUE ~ ""
-      )
-    ) %>%
-  select(-term, -OR.x, -OR.y) %>%
-    rename("Odds ratio" = OR)
-}
-
-
-# Fits naive bayes model, saves graphs of fitted marginal distributions
-# ENGLAND NORTHERN IRELAND AND WALES DON'T HAVE TO DO THE NAIVE BAYES ESIMATION
-nb_analysis = function(df_cohort, age_gp, dep_var, ind_vars) {
-  dir = paste0(output_dir, "nb_undervaccination_", age_group)
-  if (!dir.exists(dir)) {
-    dir.create(dir)
-  }
-
-  df_cohort = filter(df_cohort, age_group == age_gp) %>%
-    droplevels()
-  
-  formula = as.formula(paste(c(paste0(dep_var, " ~ "), ind_vars), collapse = " + "))
-  nb_model = naive_bayes(formula, data = df_cohort, usekernel = T)
-
-  for (var in ind_vars) {
-    png(paste0(dir, "/", var, ".png"), width = 350, height = 350)
-
-    plot(nb_model, which = var)
-
-    dev.off()
-  }
-}
-
-
 # Saves table of person years, cumulative incidence curve, fits cox model and
 # saves results table, coefficients and covariance matrix
-cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, study_start, study_end){
+cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, study_start, study_end) {
 
   # Hospitalisation or death
   dir = paste0(output_dir, "cox_", dep_var, "_", age_gp)
@@ -153,22 +40,22 @@ cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, stu
 
   df_cohort = filter(df_cohort, age_group_2 == age_gp) %>%
     droplevels()
-  
+
   df_survival = create_df_survival(df_cohort, dep_var, calendar_days = calendar_days, study_start = study_start, study_end = study_end)
-  
-  # Make factor 
-  if (age_gp %in% c('5-17', '18-74')){
+
+  # Make factor
+  if (age_gp %in% c("5-17", "18-74")) {
     df_survival = mutate(
       df_survival,
-      num_doses_time_2 = fct_relevel(num_doses_time_2, '0', '1', '2', '3+')
+      num_doses_time_2 = fct_relevel(num_doses_time_2, "0", "1", "2", "3+")
     )
-  } else if (age_gp == '75+'){
+  } else if (age_gp == "75+") {
     df_survival = mutate(
       df_survival,
-      num_doses_time_2 = fct_relevel(num_doses_time_2, '0', '1', '2', '3', '4+')
+      num_doses_time_2 = fct_relevel(num_doses_time_2, "0", "1", "2", "3", "4+")
     )
   }
-  
+
   # Cumulative incidence curve
   plot = survfit(Surv(tstart, tstop, event) ~ num_doses_time_2,
     # Reset the origin to take account of tim
@@ -206,24 +93,25 @@ cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, stu
   ggsave(paste0(dir, "/cumulative_incidence.png"))
 
   # Weighted Cox model
-  formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(ind_vars, collapse = " + ")))
-  
-  survey_design = svydesign(id = ~1,
-                            weights = ~ eave_weight,
-                            data = df_survival)
+  # Throws errors - not clear why
+  # formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(ind_vars, collapse = " + ")))
+  #
+  # survey_design = svydesign(id = ~1,
+  #                           weights = ~ eave_weight,
+  #                           data = df_survival)
+  #
+  # model = svycoxph( formula,
+  #                   design = survey_design,
+  #                   data = df_survival)
 
-  model = svycoxph( formula,
-                    design = survey_design,
-                    data = df_survival)
-  
-  # # Normalise weight to 1 so standard errors are not distorted
-  # df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
-  # 
-  # # Robust standard errors are used by default if weights are not all equal to 1
-  # model = coxph(formula, data = df_survival, weights = eave_weight)
+  # Normalise weight to 1 so standard errors are not distorted
+  df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
+
+  # Robust standard errors are used by default if weights are not all equal to 1
+  model = coxph(formula, data = df_survival, weights = eave_weight)
 
   # Results table
-  write.csv(create_cox_results_table(df_survival, model, ind_vars), paste0(dir, "/results_table.csv"), row.names = FALSE)
+  write.csv(create_cox_results_table(df_survival, model, ind_vars), paste0(dir, "/results.csv"), row.names = FALSE)
 
   # Coefficients
   coef = data.frame("variable" = names(coef(model)), "coef" = coef(model), row.names = 1:length(coef(model)))
@@ -238,7 +126,6 @@ cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, stu
 # Creates dataframe that is ready for survival model to be fitted.
 # event_col is a variable whose value is the name of the event column. This is binary and says whether person had an event.
 # event_date_col is a variable whose value is the name of the event date column.
-# df must both of these columns.
 create_df_survival = function(df, event_col, calendar_days, study_start, study_end) {
   event_date_col = paste0(event_col, "_date")
 
@@ -312,10 +199,10 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
     num_doses_time = strtoi(str_sub(vs_time, -1, -1))
   ) %>%
     mutate(num_doses_time_2 = case_when(
-      age_group_2 %in% c('5-17', '18-74') & num_doses_time >= 3 ~ '3+',
-      age_group_2 == '75+' & num_doses_time >= 4 ~ '4+',
-      TRUE ~ as.character(num_doses_time))
-  ) %>%
+      age_group_2 %in% c("5-17", "18-74") & num_doses_time >= 3 ~ "3+",
+      age_group_2 == "75+" & num_doses_time >= 4 ~ "4+",
+      TRUE ~ as.character(num_doses_time)
+    )) %>%
     mutate(num_doses_time_2 = factor(num_doses_time_2)) %>%
     select(-vs_time)
 }
@@ -327,7 +214,6 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
   person_years = data.frame()
 
   for (var in ind_vars) {
-
     formula = as.formula(paste0("Surv(duration, event) ~ ", var))
 
     person_years = bind_rows(
@@ -336,18 +222,23 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
         data = df_survival,
         scale = 1,
         data.frame = TRUE
-        )$data %>%
+      )$data %>%
         mutate(Variable = var) %>%
         rename(Levels = !!sym(var)) %>%
-        mutate(Levels = as.character(Levels),
-               HR = case_when( Levels == as.character(levels( as.factor(pull(df_survival, !!sym(var))))[1])  ~ 'Ref',
-               TRUE ~ NA_character_))
+        mutate(
+          Levels = as.character(Levels),
+          HR = case_when(
+            Levels == as.character(levels(as.factor(pull(df_survival, !!sym(var))))[1]) ~ "Ref",
+            TRUE ~ NA_character_
+          )
+        )
     )
   }
 
   person_years =
     # Person years in the table are measured in units of thousands of years
-    mutate(person_years, pyears = pyears / (365.25 * 1000),
+    mutate(person_years,
+      pyears = pyears / (365.25 * 1000),
       term = paste0(Variable, Levels)
     ) %>%
     select(Variable, Levels, pyears, n, event, term, HR)
@@ -365,10 +256,10 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
     rename(HR = estimate) %>%
     data.frame()
 
-  results_table = left_join(person_years, cox_results, by = 'term') %>%
+  results_table = left_join(person_years, cox_results, by = "term") %>%
     mutate(
       HR = coalesce(HR.x, HR.y),
-      #HR = replace_na(HR, "Ref"),
+      # HR = replace_na(HR, "Ref"),
       Variable = names_map[Variable],
       Variable = case_when(
         !duplicated(Variable) ~ Variable,
@@ -386,55 +277,6 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
 
 
 
-
-#### Undervaccination analysis
-
-## Logistic regression
-lr_dep_var = "fully_vaccinated"
-lr_ind_vars = c("sex", "age_group_3", "urban_rural_class", "simd2020_sc_quintile", "n_risk_gps")
-
-# age_group_3 only has one category for 5-11 year olds and 12-15 year olds
-# - drop it as a predictor
-lr_analysis(df_cohort, "5-11", lr_dep_var, setdiff(lr_ind_vars, 'age_group_3'))
-lr_analysis(df_cohort, "12-15", lr_dep_var, setdiff(lr_ind_vars, 'age_group_3'))
-lr_analysis(df_cohort, "16-74", lr_dep_var, lr_ind_vars)
-lr_analysis(df_cohort, "75+", lr_dep_var, lr_ind_vars)
-
-
-## Naive bayes model
-# ENGLAND NORTHERN IRELAND AND WALES DON'T HAVE TO DO THE NAIVE BAYES ESIMATION
-nb_dep_var = "fully_vaccinated"
-nb_ind_vars = c("sex", "urban_rural_class", "simd2020_sc_quintile", "n_risk_gps", "age")
-
-nb_analysis(df_cohort, "5-11", nb_dep_var, nb_ind_vars)
-nb_analysis(df_cohort, "12-15", nb_dep_var, nb_ind_vars)
-nb_analysis(df_cohort, "16-74", nb_dep_var, nb_ind_vars)
-nb_analysis(df_cohort, "75+", nb_dep_var, nb_ind_vars)
-
-
-## Comparison of logistic regression and naive bayes
-# Add predicted probabilities and classes
-# df_cohort = mutate(df_cohort,
-#                    lr_prob = predict(lr_model, df_cohort, type = "response"),
-#                    nb_prob = predict(nb_model, type = 'prob')[, 2]) %>%
-#   mutate(lr_class = ifelse(lr_prob  > 0.5, 1, 0),
-#          nb_class = ifelse(nb_prob > 0.5, 1, 0))
-#
-#
-# # Confusion matrices
-# lr_confusion = table(df_cohort$lr_class, df_cohort$fully_vaccinated)
-# nb_confusion = table(df_cohort$nb_class, df_cohort$fully_vaccinated)
-#
-# # MSE for class predictions
-# mean( ( as.numeric(df_cohort$lr_prob) - (as.numeric(df_cohort$fully_vaccinated) -1) )^2, na.rm = TRUE)
-# mean( ( as.numeric(df_cohort$nb_prob) - (as.numeric(df_cohort$fully_vaccinated) -1))^2, na.rm = TRUE)
-
-
-
-
-
-
-
 #### Severe outcomes analysis
 
 study_start = as.Date("2022-06-01")
@@ -443,7 +285,7 @@ study_end = as.Date("2022-09-30")
 cox_ind_vars = c(
   "sex",
   "age_group_3",
-  "urban_rural_class",
+  "urban_rural_2cat",
   "simd2020_sc_quintile",
   "n_risk_gps",
   "last_positive_test_group",
@@ -454,40 +296,33 @@ cox_ind_vars = c(
 )
 
 
-for (age_gp in c('5-17', '18-74', '75+')){
-  
+for (age_gp in c("5-17", "18-74", "75+")) {
   print(age_gp)
-  
-  for (dep_var in c('covid_death', 'covid_hosp', 'covid_hosp_death')){
-    
+
+  for (dep_var in c("covid_death", "covid_hosp", "covid_hosp_death")) {
     print(dep_var)
-    
+
     cox_analysis(df_cohort,
-                 age_gp = age_gp, 
-                 dep_var = dep_var, 
-                 ind_vars = cox_ind_vars,
-                 calendar_days = NA, 
-                 study_start = study_start, 
-                 study_end = study_end
+      age_gp = age_gp,
+      dep_var = dep_var,
+      ind_vars = cox_ind_vars,
+      calendar_days = NA,
+      study_start = study_start,
+      study_end = study_end
     )
-    
   }
 }
 
 
 
-
-
 #### Tests
-# 
-# df_cohort_backup = df_cohort
-# 
-# df_cohort = df_cohort %>%
-#   filter(age_group_2 == "18-74")
-# df_cohort = filter(df_cohort, individual_id %in% sample(df_cohort$individual_id, 10000)) %>%
+#
+# df_cohort_test = df_cohort %>%
+#   filter(age_group_2 == "5-17")
+# df_cohort_test = filter(df_cohort_test, individual_id %in% sample(df_cohort_test$individual_id, 1000)) %>%
 #   droplevels()
 # 
-# df_survival = create_df_survival(df_cohort,
+# df_survival = create_df_survival(df_cohort_test,
 #   event_col = "covid_death", calendar_days = 0, study_start = study_start, study_end = study_end
 # )
 # 
@@ -501,15 +336,18 @@ for (age_gp in c('5-17', '18-74', '75+')){
 # )
 # 
 # # Weighted Cox model
-# formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(ind_vars, collapse = " + ")))
+# formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(cox_ind_vars, collapse = " + ")))
 # 
-# survey_design = svydesign(id = ~1,
-#                           weights = ~ eave_weight,
-#                           data = df_survival)
+# survey_design = svydesign(
+#   id = ~1,
+#   weights = ~eave_weight,
+#   data = df_survival
+# )
 # 
-# model = svycoxph( formula,
-#                   design = survey_design,
-#                   data = df_survival)
+# model = svycoxph(formula,
+#   design = survey_design,
+#   data = df_survival
+# )
 # 
 # df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
 # 
@@ -525,7 +363,3 @@ for (age_gp in c('5-17', '18-74', '75+')){
 #   study_start,
 #   study_end
 # )
-# 
-# df_cohort = df_cohort_backup
-# 
-# rm(df_cohort_backup)

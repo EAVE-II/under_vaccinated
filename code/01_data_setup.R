@@ -34,9 +34,12 @@ Mode = function(x) {
 EAVE_cohort = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort_Demog_Endpoints_Dates2021-07-28.rds")) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
   select(EAVE_LINKNO:ur6_2016_name) %>%
-  rename(sex = Sex,
-         age = ageYear,
-         urban_rural_class = ur6_2016_name)
+  rename(
+    sex = Sex,
+    age = ageYear,
+    urban_rural_6cat = ur6_2016_name) %>%
+  mutate(
+    sex = recode_factor(sex, F = 'Female', M = 'Male'))
 
 EAVE_Weights = readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/CR_Cohort_Weights.rds"))
 
@@ -89,16 +92,18 @@ rg = qcovid_rg %>%
 # Tests
 # PCR
 cdw = readRDS(paste0(Location, "EAVE/GPanalysis/data/CDW_full.rds")) %>%
+  rename(specimen_date = date_ecoss_specimen) %>%
   mutate(
     flag_covid_symptomatic = if_else(!is.na(flag_covid_symptomatic) & flag_covid_symptomatic == "true", 1L, 0L),
-    date_ecoss_specimen = as.Date(date_ecoss_specimen)
+    specimen_date = as.Date(specimen_date)
   ) %>%
-  filter(date_ecoss_specimen <= Sys.Date())
+  filter(specimen_date <= Sys.Date())
 
 lft = readRDS(paste0(Location, "EAVE/GPanalysis/data/lft_positives.rds")) %>%
-  arrange(EAVE_LINKNO, date_ecoss_specimen) %>%
+  rename(specimen_date = date_ecoss_specimen) %>%
+  arrange(EAVE_LINKNO, specimen_date) %>%
   # Get one test per person per day
-  filter(!duplicated(paste(EAVE_LINKNO, date_ecoss_specimen)))
+  filter(!duplicated(paste(EAVE_LINKNO, specimen_date)))
 
 # All deaths
 all_deaths = readRDS(paste0(Location, "EAVE/GPanalysis/data/all_deaths.rds")) %>%
@@ -109,7 +114,7 @@ all_deaths = readRDS(paste0(Location, "EAVE/GPanalysis/data/all_deaths.rds")) %>
 # All hospitalisations
 all_hospitalisations = readRDS(paste0(Location, "EAVE/GPanalysis/data/automated_any_hospitalisation_post_01022020.rds"))
 
-# SMR
+# SMR - Scottish morbidity record
 smr = readRDS(paste0(Location, "EAVE/GPanalysis/data/SMR01_allstays.rds")) %>%
   mutate(
     ADMISSION_DATE = as.Date(ADMISSION_DATE),
@@ -121,7 +126,7 @@ smr = readRDS(paste0(Location, "EAVE/GPanalysis/data/SMR01_allstays.rds")) %>%
 covid_hospitalisations = smr %>%
   filter(covid_main_diag_admit == 1 | covid_main_other_ep == 1) %>%
   left_join(cdw) %>%
-  mutate(specimen_to_hosp = ADMISSION_DATE - date_ecoss_specimen) %>%
+  mutate(specimen_to_hosp = ADMISSION_DATE - specimen_date) %>%
   filter(specimen_to_hosp <= 28 & specimen_to_hosp >= -2) %>%
   select(EAVE_LINKNO, ADMISSION_DATE)
 
@@ -224,6 +229,8 @@ endpoints = covid_hospitalisations %>%
     TRUE ~ as.Date(NA)
   )) %>%
   distinct()
+
+
 
 
 
@@ -449,12 +456,12 @@ df_cohort = endpoints %>%
   ))
 
 # Add in time since last positive test and variant of last positive test
-df_cohort = filter(cdw, date_ecoss_specimen < study_start & test_result == "POSITIVE") %>%
-  select(EAVE_LINKNO, date_ecoss_specimen) %>%
+df_cohort = filter(cdw, specimen_date < study_start & test_result == "POSITIVE") %>%
+  select(EAVE_LINKNO, specimen_date) %>%
   left_join(wgs %>% 
     select(
       EAVE_LINKNO,
-      date_ecoss_specimen = Collection_Date,
+      specimen_date = Collection_Date,
       last_positive_variant = lineage) %>%
     mutate(
       last_positive_variant = case_when(
@@ -463,13 +470,13 @@ df_cohort = filter(cdw, date_ecoss_specimen < study_start & test_result == "POSI
         last_positive_variant %in% c('BA.1', 'BA.2', 'BA.3', 'BA.4', 'BA.5') ~ "Omicron",
         TRUE ~ "Other"))
     ) %>%
-  arrange(EAVE_LINKNO, desc(date_ecoss_specimen)) %>%
+  arrange(EAVE_LINKNO, desc(specimen_date)) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
   right_join(df_cohort) %>%
   mutate(
-    last_positive_test = as.numeric(study_start - date_ecoss_specimen),
+    last_positive_test = as.numeric(study_start - specimen_date),
     last_positive_variant = case_when( 
-      is.na(date_ecoss_specimen) ~ 'never_positive',
+      is.na(specimen_date) ~ 'never_positive',
       is.na(last_positive_variant) ~ "not_sequenced",
       TRUE ~ last_positive_variant)
 ) %>%
@@ -483,7 +490,7 @@ df_cohort = filter(cdw, date_ecoss_specimen < study_start & test_result == "POSI
          last_positive_variant = factor(last_positive_variant, c('never_positive', 'not_sequenced', 'Alpha', 'Delta', 'Omicron')))
 
 # Add number of PCR tests in last 6 months before study_start
-df_cohort = filter(cdw, date_ecoss_specimen >= study_start %m-% months(6) & date_ecoss_specimen < study_start) %>%
+df_cohort = filter(cdw, specimen_date >= study_start %m-% months(6) & specimen_date < study_start) %>%
   count(EAVE_LINKNO) %>%
   rename(num_tests_6m = n) %>%
   select(EAVE_LINKNO, num_tests_6m) %>%
@@ -497,7 +504,7 @@ df_cohort = filter(cdw, date_ecoss_specimen >= study_start %m-% months(6) & date
 
 
 # Add number of positive PCR tests in last 6 months before study_start
-df_cohort = filter(cdw, date_ecoss_specimen >= study_start %m-% months(6) & date_ecoss_specimen < study_start & test_result == 'POSITIVE') %>%
+df_cohort = filter(cdw, specimen_date >= study_start %m-% months(6) & specimen_date < study_start & test_result == 'POSITIVE') %>%
   count(EAVE_LINKNO) %>%
   rename(num_pos_tests_6m = n) %>%
   select(EAVE_LINKNO, num_pos_tests_6m) %>%
@@ -610,13 +617,17 @@ df_cohort = mutate_at(df_cohort, c("smoking_status", "blood_pressure"), ~ as.cha
       blood_pressure == "Very High" ~ "Very high",
       TRUE ~ blood_pressure
     ),
-    urban_rural_class = case_when(
-      urban_rural_class == "1 Large Urban Areas" ~ "Large Urban Areas",
-      urban_rural_class == "2 Other Urban Areas" ~ "Other Urban Areas",
-      urban_rural_class == "3 Accessible Small Towns" ~ "Accessible Small Towns",
-      urban_rural_class == "4 Remote Small Towns" ~ "Remote Small Towns",
-      urban_rural_class == "5 Accessible Rural" ~ "Accessible Rural",
-      urban_rural_class == "6 Remote Rural" ~ "Remote Rural"
+    urban_rural_6cat = case_when(
+      urban_rural_6cat == "1 Large Urban Areas" ~ "Large Urban Areas",
+      urban_rural_6cat == "2 Other Urban Areas" ~ "Other Urban Areas",
+      urban_rural_6cat == "3 Accessible Small Towns" ~ "Accessible Small Towns",
+      urban_rural_6cat == "4 Remote Small Towns" ~ "Remote Small Towns",
+      urban_rural_6cat == "5 Accessible Rural" ~ "Accessible Rural",
+      urban_rural_6cat == "6 Remote Rural" ~ "Remote Rural"
+    ),
+    urban_rural_2cat = case_when(
+      urban_rural_6cat %in% c("Large Urban Areas", "Other Urban Areas") ~ 'Urban',
+      urban_rural_6cat %in% c( "Accessible Small Towns", "Remote Small Towns", "Accessible Rural", "Remote Rural") ~ 'Rural'
     )
   ) %>%
   mutate_at(c("smoking_status", "blood_pressure"), ~ as.factor(.)) %>%
@@ -626,8 +637,8 @@ df_cohort = mutate_at(df_cohort, c("smoking_status", "blood_pressure"), ~ as.cha
     Q_HOME_CAT = fct_relevel(Q_HOME_CAT, "Neither"),
     Q_LEARN_CAT = fct_relevel(Q_LEARN_CAT, "Neither"),
     Q_DIAG_CKD_LEVEL = fct_relevel(Q_DIAG_CKD_LEVEL, "No CKD"),
-    urban_rural_class = fct_relevel(
-      urban_rural_class, "Large Urban Areas",
+    urban_rural_6cat = fct_relevel(
+      urban_rural_6cat, "Large Urban Areas",
       "Other Urban Areas",
       "Accessible Small Towns",
       "Remote Small Towns",
@@ -648,10 +659,10 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 
 #### df_cohort has the following columns:
 
-# [1] "individual_id"               "shielding"                "num_pos_tests_6m"         "num_tests_6m"             "date_ecoss_specimen"     
-# [6] "last_positive_variant"    "covid_hosps"              "date_death"               "covid_death"              "num_ppl_household"       
+# [1] "individual_id"             "shielding"                "num_pos_tests_6m"         "num_tests_6m"            "specimen_date"     
+# [6] "last_positive_variant"     "covid_hosps"              "date_death"               "covid_death"              "num_ppl_household"       
 # [11] "mean_household_age"       "sex"                      "age"                      "simd2020_sc_quintile"     "DataZone"                
-# [16] "urban_rural_class"        "age_group"                "age_group_2"              "age_group_3"              "eave_weight"             
+# [16] "urban_rural_6cat"         "age_group"                "age_group_2"              "age_group_3"              "eave_weight"             
 # [21] "Q_BMI"                    "Q_ETHNICITY"              "Q_HOME_CAT"               "Q_LEARN_CAT"              "Q_DIAG_CKD_LEVEL"        
 # [26] "Q_DIAG_AF"                "Q_DIAG_ASTHMA"            "Q_DIAG_BLOOD_CANCER"      "Q_DIAG_CCF"               "Q_DIAG_CEREBRALPALSY"    
 # [31] "Q_DIAG_CHD"               "Q_DIAG_CIRRHOSIS"         "Q_DIAG_CONGEN_HD"         "Q_DIAG_COPD"              "Q_DIAG_DEMENTIA"         
@@ -664,7 +675,7 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # [66] "vacc_type_5"              "vacc_type_NA"             "vacc_type_6"              "vacc_type_7"              "num_doses_recent"        
 # [71] "num_doses_start"          "vacc_seq_recent"          "vacc_seq_start"           "mixed_vacc_recent"        "mixed_vacc_start"        
 # [76] "vs_recent"                "vs_start"                 "fully_vaccinated"         "vs_mixed_start"           "vs_mixed_recent"         
-# [81] "covid_hosp_ever"          "last_positive_test"       "last_positive_test_group" "num_tests_6m_group" 
+# [81] "covid_hosp_ever"          "last_positive_test"       "last_positive_test_group" "num_tests_6m_group"   
 
 
 #### Variable descriptions
@@ -678,8 +689,13 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 
 # num_tests_6m is integer - number of tests they have had in the last 6 months before study_start
 
+# specimen_date is specimen date of last positive test
+
 # num_tests_6m_group has the following levels:
 # 0, 1, 2, 3, 4-9, 10+
+
+# last_positive_test_variant has the following levels:
+# Alpha, Delta, Omicron, Other
 
 # last_positive_test_group has the following levels:
 # never_positive, 0-13_weeks, 14-26_weeks, 27+_weeks
@@ -687,15 +703,18 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # covid_hosps is integer - number of covid hospitalisations they have ever had
 
 # simd2020_sc_quintile is their quintile of the Scottish index of multiple deprivation
-# 1 is the most deprived, 5 is the least deprived
+# 1 is the most deprived, 5 is the most affluent
 
-# urban_rural_class has the following levels:
+# urban_rural_6cat has the following levels:
 # Large Urban Areas
 # Other Urban Areas
 # Accessible Small Towns
 # Remote Small Towns
 # Accessible Rural
 # Remote Rural
+
+# urban_rural_2cat has the following levels:
+# Urban, Rural
 
 # bmi_cat is their body mass index cateogry, and has the following levels:
 # 10-18.5, 18.5-25, 25-30, 30-35, 35-40, 40+
