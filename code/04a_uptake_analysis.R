@@ -2,7 +2,8 @@
 ## Title: [Insert full title of paper]
 ## Code author: Steven Kerr steven.kerr@ed.ac.uk
 ## Description: Analysis of suboptimal vaccination
-## 
+##              01_data_cleaning and 02_data_prep need to be run first.
+##              names_map from  03_cohort_description is also needed.
 ######################################################################
 
 library(naivebayes)
@@ -14,7 +15,8 @@ library(survey)
 output_dir = "./output/"
 
 # Pre-requisites
-#source('./output/01_data_setup.R')
+#source("./code/01_data_cleaning.R")
+#source("./code/02_data_prep.R")
 # The only thing needed from 02_cohort_description is names_map
 #source('./output/02_cohort_description.R')
 
@@ -23,25 +25,25 @@ names_map["last_positive_test_group"] = "Last positive test"
 names_map["num_tests_6m_group"] = "Number of tests in last 6 months"
 names_map["shielding"] = "Ever shielding"
 names_map["num_doses_time_2"] = "Number of doses"
-names_map["age_group_3"] = "Age group"
+names_map["age_17cat"] = "Age group"
 names_map["covid_hosp_ever"] = "Previous COVID-19 hospitalisation"
 names_map["urban_rural_2cat"] = "Urban/rural classification"
 
 #### Functions
 
 # Fit logistic model and saves results table, coefficients and covariance matrix
-lr_analysis = function(df_cohort, age_gp, dep_var, ind_vars) {
+lr_analysis = function(df_cohort, age_group, dep_var, ind_vars) {
 
   ## Logistic regression
-  dir = paste0(output_dir, "lr_undervaccination_", age_gp)
+  dir = paste0(output_dir, "lr_undervaccination_", age_group)
   if (!dir.exists(dir)) {
     dir.create(dir)
   }
 
   df_cohort = filter(
     df_cohort, 
-      age_group == age_gp,
-      is.na(date_death) | date_death > study_start) %>%
+      age_4cat == age_group,
+      is.na(death_date) | death_date > study_start) %>%
     droplevels()
 
   # Weighted logistic regression
@@ -52,6 +54,8 @@ lr_analysis = function(df_cohort, age_gp, dep_var, ind_vars) {
                             data = df_cohort)
   
   model = svyglm(formula, design = survey_design, family = binomial, data = df_cohort)
+  
+  saveRDS(model, paste0(dir, "/model.rds"))
 
   # Coefficients
   coef = data.frame("variable" = names(coef(model)), "coef" = coef(model), row.names = 1:length(coef(model)))
@@ -132,13 +136,13 @@ create_logistic_results_table = function(df_cohort, model, dep_var, ind_vars) {
 
 # Fits naive bayes model, saves graphs of fitted marginal distributions
 # ENGLAND NORTHERN IRELAND AND WALES DON'T HAVE TO DO THE NAIVE BAYES ESIMATION
-nb_analysis = function(df_cohort, age_gp, dep_var, ind_vars) {
-  dir = paste0(output_dir, "nb_undervaccination_", age_gp)
+nb_analysis = function(df_cohort, age_group, dep_var, ind_vars) {
+  dir = paste0(output_dir, "nb_undervaccination_", age_group)
   if (!dir.exists(dir)) {
     dir.create(dir)
   }
 
-  df_cohort = filter(df_cohort, age_group == age_gp) %>%
+  df_cohort = filter(df_cohort, age_4cat == age_group) %>%
     droplevels()
   
   formula = as.formula(paste(c(paste0(dep_var, " ~ "), ind_vars), collapse = " + "))
@@ -158,12 +162,12 @@ nb_analysis = function(df_cohort, age_gp, dep_var, ind_vars) {
 
 ## Logistic regression
 lr_dep_var = "fully_vaccinated"
-lr_ind_vars = c("sex", "age_group_3", "urban_rural_2cat", "simd2020_sc_quintile", "n_risk_gps")
+lr_ind_vars = c("sex", "age_17cat", "urban_rural_2cat", "simd2020_sc_quintile", "n_risk_gps")
 
-# age_group_3 only has one category for 5-11 year olds and 12-15 year olds
+# age_17cat only has one category for 5-11 year olds and 12-15 year olds
 # - drop it as a predictor
-lr_analysis(df_cohort, "5-11", lr_dep_var, setdiff(lr_ind_vars, 'age_group_3'))
-lr_analysis(df_cohort, "12-15", lr_dep_var, setdiff(lr_ind_vars, 'age_group_3'))
+lr_analysis(df_cohort, "5-11", lr_dep_var, setdiff(lr_ind_vars, 'age_17cat'))
+lr_analysis(df_cohort, "12-15", lr_dep_var, setdiff(lr_ind_vars, 'age_17cat'))
 lr_analysis(df_cohort, "16-74", lr_dep_var, lr_ind_vars)
 lr_analysis(df_cohort, "75+", lr_dep_var, lr_ind_vars)
 

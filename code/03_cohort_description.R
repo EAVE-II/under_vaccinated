@@ -2,10 +2,9 @@
 ## Title: [Insert full title of paper]
 ## Code author: Steven Kerr steven.kerr@ed.ac.uk
 ## Description: Create cohort description tables.
-##              01_data_setup is sourced.
+##              01_data_cleaning and 02_data_prep are sourced.
 ######################################################################
 
-# Libraries
 library(tidyverse)
 library(lubridate)
 library(finalfit)
@@ -17,7 +16,8 @@ library(scales)
 
 setwd("/conf/EAVE/GPanalysis/analyses/under_vaccinated")
 
-# source('./code/01_data_setup.R')
+#source("./code/01_data_cleaning.R")
+#source("./code/02_data_prep.R")
 
 # Create output directory
 output_dir = "./output/"
@@ -36,7 +36,7 @@ var_names = c(
   "Total N (%)",
   "sex",
   "age",
-  "age_group",
+  "age_4cat",
   "simd2020_sc_quintile",
   "urban_rural_6cat",
   "mean_household_age",
@@ -191,13 +191,14 @@ write.csv(summary_tbl_wt_chrt, paste0(output_dir, "/summary_table_weights_cohort
 # 5-11
 summary_tbl_wt_chrt_5_11 = summary_factorlist(
   df_cohort %>%
-    filter(age_group == "5-11") %>%
+    filter(age_4cat == "5-11") %>%
     # Put 1 as the first level, to make it easier to remove the level 0
     # in the final table
     mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
+    mutate(num_doses_start = factor(num_doses_start)) %>%
     droplevels(),
   dependent = "num_doses_start",
-  explanatory = setdiff(var_names, c("Total N (%)", "age_group")),
+  explanatory = setdiff(var_names, c("Total N (%)", "age_4cat")),
   add_col_totals = TRUE,
   weights = "eave_weight",
   na_include = TRUE
@@ -233,13 +234,14 @@ write.csv(summary_tbl_wt_chrt_5_11, paste0(output_dir, "/summary_table_weights_c
 # 12-15
 summary_tbl_wt_chrt_12_15 = summary_factorlist(
   df_cohort %>%
-    filter(age_group == "12-15") %>%
+    filter(age_4cat == "12-15") %>%
     # Put 1 as the first level, to make it easier to remove the level 0
     # in the final table
     mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
+    mutate(num_doses_start = factor(num_doses_start)) %>%
     droplevels(),
   dependent = "num_doses_start",
-  explanatory = setdiff(var_names, c("Total N (%)", "age_group")),
+  explanatory = setdiff(var_names, c("Total N (%)", "age_4cat")),
   add_col_totals = TRUE,
   weights = "eave_weight",
   na_include = TRUE
@@ -275,13 +277,14 @@ write.csv(summary_tbl_wt_chrt_12_15, paste0(output_dir, "/summary_table_weights_
 # 16-74
 summary_tbl_wt_chrt_16_74 = summary_factorlist(
   df_cohort %>%
-    filter(age_group == "16-74") %>%
+    filter(age_4cat == "16-74") %>%
     # Put 1 as the first level, to make it easier to remove the level 0
     # in the final table
     mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
+    mutate(num_doses_start = factor(num_doses_start)) %>%
     droplevels(),
   dependent = "num_doses_start",
-  explanatory = setdiff(var_names, c("Total N (%)", "age_group")),
+  explanatory = setdiff(var_names, c("Total N (%)", "age_4cat")),
   add_col_totals = TRUE,
   weights = "eave_weight",
   na_include = TRUE
@@ -318,13 +321,14 @@ write.csv(summary_tbl_wt_chrt_16_74, paste0(output_dir, "/summary_table_weights_
 # 75+
 summary_tbl_wt_chrt_over_75 = summary_factorlist(
   df_cohort %>%
-    filter(age_group == "75+") %>%
+    filter(age_4cat == "75+") %>%
     # Put 1 as the first level, to make it easier to remove the level 0
     # in the final table
     mutate_at(bin_vars, ~ factor(., levels = c(1, 0))) %>%
+    mutate(num_doses_start = factor(num_doses_start)) %>%
     droplevels(),
   dependent = "num_doses_start",
-  explanatory = setdiff(var_names, c("Total N (%)", "age_group")),
+  explanatory = setdiff(var_names, c("Total N (%)", "age_4cat")),
   add_col_totals = TRUE,
   weights = "eave_weight",
   na_include = TRUE
@@ -365,7 +369,7 @@ d_study_weeks = seq(
 )
 
 d_dummy_weeks = expand_grid(
-  age_group = sort(unique(df_cohort$age_group)),
+  age_4cat = sort(unique(df_cohort$age_4cat)),
   dose_num = c("1", "2", "3", "4"),
   dose_week = d_study_weeks
 )
@@ -373,7 +377,7 @@ d_dummy_weeks = expand_grid(
 d_vacc_week =
   df_cohort %>%
   select(
-    age_group,
+    age_4cat,
     `1` = date_vacc_1,
     `2` = date_vacc_2,
     `3` = date_vacc_3,
@@ -387,10 +391,10 @@ d_vacc_week =
   ) %>%
   mutate(dose_week = floor_date(dose_date, "week")) %>%
   filter(dose_week <= study_end) %>%
-  count(age_group, dose_num, dose_week) %>%
-  full_join(d_dummy_weeks, by = c("age_group", "dose_num", "dose_week")) %>%
+  count(age_4cat, dose_num, dose_week) %>%
+  full_join(d_dummy_weeks, by = c("age_4cat", "dose_num", "dose_week")) %>%
   mutate(n = replace_na(n, as.integer(0))) %>%
-  arrange(age_group, dose_num, dose_week)
+  arrange(age_4cat, dose_num, dose_week)
 
 
 d_vacc_week %>%
@@ -398,7 +402,7 @@ d_vacc_week %>%
   # Alter this depending on what the rules for your TRE are
   mutate(n = if_else(1 <= n & n < 5, as.integer(3), n)) %>%
   ggplot(aes(x = dose_week, y = n, colour = dose_num)) +
-  facet_wrap(~age_group, ncol = 1, scales = "free_y") +
+  facet_wrap(~age_4cat, ncol = 1, scales = "free_y") +
   geom_line() +
   xlab("") +
   ylab("") +
@@ -415,7 +419,7 @@ d_vacc_diff =
   df_cohort %>%
   select(
     individual_id,
-    age_group,
+    age_4cat,
     dose1    = date_vacc_1,
     dose2    = date_vacc_2,
     dose3    = date_vacc_3,
@@ -437,18 +441,18 @@ d_vacc_diff =
     `Dose 3 to 4` = floor(`Dose 3 to 4`)
   ) %>%
   select(
-    age_group,
+    age_4cat,
     `Dose 1 to 2`,
     `Dose 2 to 3`,
     `Dose 3 to 4`
   ) %>%
   pivot_longer(
-    cols           = -age_group,
+    cols           = -age_4cat,
     names_to       = "dose_to_dose",
     values_to      = "diff_weeks",
     values_drop_na = TRUE
   ) %>%
-  count(age_group, dose_to_dose, diff_weeks)
+  count(age_4cat, dose_to_dose, diff_weeks)
 
 d_vacc_diff %>%
   # Suppression
@@ -458,7 +462,7 @@ d_vacc_diff %>%
     x = diff_weeks,
     y = n,
   )) +
-  facet_grid(age_group ~ dose_to_dose, scales = "free") +
+  facet_grid(age_4cat ~ dose_to_dose, scales = "free") +
   geom_col() +
   scale_y_continuous(labels = scales::comma) +
   xlab("Weeks") +
@@ -473,8 +477,8 @@ ggsave(paste0(output_dir, "time_between_doses.png"), height = 10, width = 10)
 date_vacc_start = as.Date("2020-12-08")
 
 df = df_cohort %>%
-  select(individual_id, age_group, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5, date_death) %>%
-  mutate(surv_date = pmin(study_end, date_death, na.rm = TRUE)) %>%
+  select(individual_id, age_4cat, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5, death_date) %>%
+  mutate(surv_date = pmin(study_end, death_date, na.rm = TRUE)) %>%
   mutate(surv_time = as.numeric(surv_date - (date_vacc_start))) %>%
   mutate(event = 0) %>%
   # Some people died before study start and will therefore have negative survival time. Remove them.
@@ -493,7 +497,7 @@ df_vs = df %>%
     `Dose 3` = as.numeric(date_vacc_3 - date_vacc_start),
     `Dose 4` = as.numeric(date_vacc_4 - date_vacc_start),
     `Dose 5` = as.numeric(date_vacc_5 - date_vacc_start),
-    Death = as.numeric(date_death - date_vacc_start)
+    Death = as.numeric(death_date - date_vacc_start)
   ) %>%
   select(-date_vacc_1, -date_vacc_2, -date_vacc_3, -date_vacc_4, -date_vacc_5)
 
@@ -509,14 +513,14 @@ df = tmerge(df, df_vs, id = individual_id, dose_event = event(time, vs)) %>%
 
 # Cumulative incidence curve
 plot = survfit(
-  Surv(tstart, tstop, dose_event) ~ age_group,
+  Surv(tstart, tstop, dose_event) ~ age_4cat,
   data = df,
   id = individual_id
 ) %>%
   tidy() %>%
   mutate(
     strata = strata %>%
-      str_replace("age_group=", "") %>%
+      str_replace("age_4cat=", "") %>%
       factor() %>%
       fct_relevel("5-11", "12-15", "16-74", "75+"),
     State = state %>%
@@ -559,12 +563,12 @@ ggsave(paste0(output_dir, "uptake_cumulative_incidence.png"), plot, height = 10)
 # d_mstate_vacc =
 #   df_cohort %>%
 #   mutate(
-#     Death = date_death,
+#     Death = death_date,
 #     study_end = study_end
 #   ) %>%
 #   select(
 #     individual_id,
-#     age_group,
+#     age_4cat,
 #     `Dose 1`    = date_vacc_1,
 #     `Dose 2`    = date_vacc_2,
 #     `Dose 3`    = date_vacc_3,
@@ -588,7 +592,7 @@ ggsave(paste0(output_dir, "uptake_cumulative_incidence.png"), plot, height = 10)
 #   )) %>%
 #   select(-end_follow_up) %>%
 #   pivot_longer(
-#     cols           = c(-individual_id, -age_group),
+#     cols           = c(-individual_id, -age_4cat),
 #     names_to       = "event_name",
 #     values_to      = "event_date",
 #     values_drop_na = TRUE
@@ -637,7 +641,7 @@ ggsave(paste0(output_dir, "uptake_cumulative_incidence.png"), plot, height = 10)
 #
 # # fit mstate
 # mstate_vacc = survfit(
-#   formula = Surv(tstart, tstop, state_to) ~ age_group,
+#   formula = Surv(tstart, tstop, state_to) ~ age_4cat,
 #   data = d_mstate_vacc,
 #   id = individual_id
 # )
@@ -647,7 +651,7 @@ ggsave(paste0(output_dir, "uptake_cumulative_incidence.png"), plot, height = 10)
 #   tidy() %>%
 #   mutate(
 #     strata = strata %>%
-#       str_replace("age_group=", "") %>%
+#       str_replace("age_4cat=", "") %>%
 #       factor() %>%
 #       fct_relevel("5-11", "12-15", "16-74", "75+"),
 #     State = state %>%

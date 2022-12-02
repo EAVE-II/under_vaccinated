@@ -2,9 +2,10 @@
 ## Title: [Insert full title of paper]
 ## Code author: Steven Kerr steven.kerr@ed.ac.uk
 ## Description: Analysis of severe COVID-19 events
+##              01_data_cleaning and 02_data_prep need to be run first.
+##              names_map from  03_cohort_description is also needed.
 ######################################################################
 
-library(naivebayes)
 library(survival)
 library(lubridate)
 library(broom)
@@ -13,7 +14,8 @@ library(survey)
 output_dir = "./output/"
 
 # Pre-requisites
-# source('./output/01_data_setup.R')
+#source("./code/01_data_cleaning.R")
+#source("./code/02_data_prep.R")
 # The only thing needed from 02_cohort_description is names_map
 # source('./output/02_cohort_description.R')
 
@@ -22,7 +24,7 @@ names_map["last_positive_test_group"] = "Last positive test"
 names_map["num_tests_6m_group"] = "Number of tests in last 6 months"
 names_map["shielding"] = "Ever shielding"
 names_map["num_doses_time_2"] = "Number of doses"
-names_map["age_group_3"] = "Age group"
+names_map["age_17cat"] = "Age group"
 names_map["covid_hosp_ever"] = "Previous COVID-19 hospitalisation"
 names_map["urban_rural_2cat"] = "Urban/rural classification"
 
@@ -30,26 +32,26 @@ names_map["urban_rural_2cat"] = "Urban/rural classification"
 
 # Saves table of person years, cumulative incidence curve, fits cox model and
 # saves results table, coefficients and covariance matrix
-cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, study_start, study_end) {
+cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, study_start, study_end) {
 
   # Hospitalisation or death
-  dir = paste0(output_dir, "cox_", dep_var, "_", age_gp)
+  dir = paste0(output_dir, "cox_", dep_var, "_", age_group)
   if (!dir.exists(dir)) {
     dir.create(dir)
   }
 
-  df_cohort = filter(df_cohort, age_group_2 == age_gp) %>%
+  df_cohort = filter(df_cohort, age_3cat == age_group) %>%
     droplevels()
 
   df_survival = create_df_survival(df_cohort, dep_var, calendar_days = calendar_days, study_start = study_start, study_end = study_end)
 
   # Make factor
-  if (age_gp %in% c("5-17", "18-74")) {
+  if (age_group %in% c("5-17", "18-74")) {
     df_survival = mutate(
       df_survival,
       num_doses_time_2 = fct_relevel(num_doses_time_2, "0", "1", "2", "3+")
     )
-  } else if (age_gp == "75+") {
+  } else if (age_group == "75+") {
     df_survival = mutate(
       df_survival,
       num_doses_time_2 = fct_relevel(num_doses_time_2, "0", "1", "2", "3", "4+")
@@ -109,6 +111,8 @@ cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, stu
 
   # Robust standard errors are used by default if weights are not all equal to 1
   model = coxph(formula, data = df_survival, weights = eave_weight)
+  
+  saveRDS(model, paste0(dir, "/model.rds"))
 
   # Results table
   write.csv(create_cox_results_table(df_survival, model, ind_vars), paste0(dir, "/results.csv"), row.names = FALSE)
@@ -127,21 +131,12 @@ cox_analysis = function(df_cohort, age_gp, dep_var, ind_vars, calendar_days, stu
 # event_col is a variable whose value is the name of the event column. This is binary and says whether person had an event.
 # event_date_col is a variable whose value is the name of the event date column.
 create_df_survival = function(df, event_col, calendar_days, study_start, study_end) {
+  
   event_date_col = paste0(event_col, "_date")
 
-  # Add in endpoints
-  cohort_endpoints = select(endpoints, individual_id, !!sym(event_col), !!sym(event_date_col)) %>%
-    # Only use events that happened in the study period
-    filter(!!sym(event_date_col) >= study_start & !!sym(event_date_col) <= study_end) %>%
-    # Get date of first event
-    group_by(individual_id) %>%
-    mutate(!!sym(event_date_col) := min(!!sym(event_date_col), na.rm = TRUE)) %>%
-    ungroup() %>%
-    distinct()
-
-  df = left_join(df, cohort_endpoints) %>%
+  df = df %>%
     mutate(surv_date = pmin(study_end, !!sym(event_date_col), na.rm = TRUE)) %>%
-    mutate(surv_date = pmin(surv_date, date_death, na.rm = TRUE)) %>%
+    mutate(surv_date = pmin(surv_date, death_date, na.rm = TRUE)) %>%
     mutate(event = case_when(
       surv_date == !!sym(event_date_col) ~ 1,
       TRUE ~ 0
@@ -173,7 +168,35 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
   ) %>%
     filter(!is.na(time))
 
-  # Add calendar period as a time-dependent variable
+  # Add in vaccination status as a time dependent variable
+  df = tmerge(df, df_vs, id = individual_id, exposure = tdc(time, vs)) %>%
+    rename(vs_time = exposure)
+  
+  
+  # If event involves hospitalisation, put in competing hospitalisation events
+  # as time-dependent variable
+  if (str_detect(event_col, 'hosp')){
+    
+    # dataframe of start times for other hospitalisations
+    df_competing_hosp = select(df, individual_id, !!sym(paste0('non_', event_date_col))) %>%
+      mutate(
+        no_competing_hosp = -Inf,
+        competing_hosp = as.numeric(!!sym(paste0('non_', event_date_col)) - study_start),
+      ) %>%
+      select(-!!sym(paste0('non_', event_date_col)))
+    
+    df_competing_hosp = pivot_longer(df_competing_hosp,
+                         cols = c("no_competing_hosp", "competing_hosp"),
+                         names_to = "competing_hosp", values_to = "time"
+    ) %>%
+      filter(!is.na(time))
+    
+    # Add in vaccination status as a time dependent variable
+    df = tmerge(df, df_competing_hosp, id = individual_id, exposure = tdc(time, competing_hosp)) %>%
+      rename(competing_hosp = exposure)
+  }
+  
+
   # dataframe of start times for different calendar periods
   # df_calendar = select(df, individual_id)
   #
@@ -185,11 +208,7 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
   #
   # df_calendar = pivot_longer(df_calendar, cols = as.character(calendar_start),
   #                            names_to = 'calendar', values_to = 'time')
-
-  # Add in vaccination status as a time dependent variable
-  df = tmerge(df, df_vs, id = individual_id, exposure = tdc(time, vs)) %>%
-    rename(vs_time = exposure)
-
+  
   # Add in calendar period as a time dependent variable
   # df = tmerge(df, df_calendar, id = individual_id, exposure = tdc(time, calendar)) %>%
   #   rename(calendar = exposure)
@@ -199,8 +218,8 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
     num_doses_time = strtoi(str_sub(vs_time, -1, -1))
   ) %>%
     mutate(num_doses_time_2 = case_when(
-      age_group_2 %in% c("5-17", "18-74") & num_doses_time >= 3 ~ "3+",
-      age_group_2 == "75+" & num_doses_time >= 4 ~ "4+",
+      age_3cat %in% c("5-17", "18-74") & num_doses_time >= 3 ~ "3+",
+      age_3cat == "75+" & num_doses_time >= 4 ~ "4+",
       TRUE ~ as.character(num_doses_time)
     )) %>%
     mutate(num_doses_time_2 = factor(num_doses_time_2)) %>%
@@ -279,31 +298,29 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
 
 #### Severe outcomes analysis
 
-study_start = as.Date("2022-06-01")
-study_end = as.Date("2022-09-30")
-
 cox_ind_vars = c(
   "sex",
-  "age_group_3",
+  "age_17cat",
   "urban_rural_2cat",
   "simd2020_sc_quintile",
   "n_risk_gps",
   "last_positive_test_group",
   "shielding",
   "num_tests_6m_group",
-  "covid_hosp_ever",
+  "covid_mcoa_hosp_ever",
+  "competing_hosp",
   "num_doses_time_2"
 )
 
 
-for (age_gp in c("5-17", "18-74", "75+")) {
-  print(age_gp)
+for (age_group in c("5-17", "18-74", "75+")) {
+  print(age_group)
 
   for (dep_var in c("covid_death", "covid_hosp", "covid_hosp_death")) {
     print(dep_var)
 
     cox_analysis(df_cohort,
-      age_gp = age_gp,
+      age_group = age_group,
       dep_var = dep_var,
       ind_vars = cox_ind_vars,
       calendar_days = NA,
@@ -318,17 +335,17 @@ for (age_gp in c("5-17", "18-74", "75+")) {
 #### Tests
 #
 # df_cohort_test = df_cohort %>%
-#   filter(age_group_2 == "5-17")
-# df_cohort_test = filter(df_cohort_test, individual_id %in% sample(df_cohort_test$individual_id, 1000)) %>%
+#   filter(age_3cat == "5-17")
+# df_cohort_test = filter(df_cohort_test, individual_id %in% sample(df_cohort_test$individual_id, 100)) %>%
 #   droplevels()
 # 
 # df_survival = create_df_survival(df_cohort_test,
-#   event_col = "covid_death", calendar_days = 0, study_start = study_start, study_end = study_end
+#   event_col = "covid_mcoa_hosp", calendar_days = 0, study_start = study_start, study_end = study_end
 # )
 # 
 # # # Check everything is ok - verify that bob is indeed one's uncle
 # bob = select(
-#   df_survival, individual_id, age_group_2, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
+#   df_survival, individual_id, age_3cat, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
 #   vacc_type_1, vacc_type_2, vacc_type_3, vacc_type_4, vacc_type_5,
 #   num_doses_start, num_doses_recent, vacc_seq_start, vacc_seq_recent,
 #   vs_start, vs_recent, fully_vaccinated, vs_mixed_start, event, surv_date,
@@ -338,16 +355,16 @@ for (age_gp in c("5-17", "18-74", "75+")) {
 # # Weighted Cox model
 # formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(cox_ind_vars, collapse = " + ")))
 # 
-# survey_design = svydesign(
-#   id = ~1,
-#   weights = ~eave_weight,
-#   data = df_survival
-# )
-# 
-# model = svycoxph(formula,
-#   design = survey_design,
-#   data = df_survival
-# )
+# # survey_design = svydesign(
+# #   id = ~1,
+# #   weights = ~eave_weight,
+# #   data = df_survival
+# # )
+# # 
+# # model = svycoxph(formula,
+# #   design = survey_design,
+# #   data = df_survival
+# # )
 # 
 # df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
 # 
@@ -356,7 +373,7 @@ for (age_gp in c("5-17", "18-74", "75+")) {
 # results_table = create_cox_results_table(df_survival, model, cox_ind_vars)
 # 
 # cox_analysis(df_cohort,
-#   age_gp = "18-74",
+#   age_group = "18-74",
 #   dep_var = "covid_hosp_death",
 #   ind_vars = cox_ind_vars,
 #   calendar_days = 0,

@@ -4,7 +4,6 @@
 ## Description: Load in all data and create a cohort dataframe
 ######################################################################
 
-# Libraries
 library(tidyverse)
 library(lubridate)
 
@@ -107,7 +106,7 @@ lft = readRDS(paste0(Location, "EAVE/GPanalysis/data/lft_positives.rds")) %>%
 
 # All deaths
 all_deaths = readRDS(paste0(Location, "EAVE/GPanalysis/data/all_deaths.rds")) %>%
-  rename(date_death = NRS.Date.Death) %>%
+  rename(death_date = NRS.Date.Death) %>%
   rowwise() %>%
   mutate(covid_death = ifelse(rowSums(across(UNDERLYING_CAUSE_OF_DEATH:CAUSE_OF_DEATH_CODE_9, ~ .x %in% c("U071", "U072")), na.rm = T) > 0, 1, 0))
 
@@ -218,7 +217,7 @@ endpoints = covid_hospitalisations %>%
   mutate(covid_hosp = 1) %>%
   full_join(all_deaths %>%
     filter(covid_death == 1) %>%
-    rename(covid_death_date = date_death) %>%
+    rename(covid_death_date = death_date) %>%
     select(EAVE_LINKNO, covid_death, covid_death_date)) %>%
   mutate(covid_hosp_death = case_when(
     covid_hosp == 1 | covid_death == 1 ~ 1,
@@ -439,7 +438,7 @@ df_cohort = Cohort_Household %>%
 
 # Add deaths from any cause
 df_cohort = all_deaths %>%
-  select(EAVE_LINKNO, date_death, covid_death) %>%
+  select(EAVE_LINKNO, death_date, covid_death) %>%
   right_join(df_cohort) %>%
   mutate(covid_death = replace_na(covid_death, 0)) 
 
@@ -660,7 +659,7 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 #### df_cohort has the following columns:
 
 # [1] "individual_id"             "shielding"                "num_pos_tests_6m"         "num_tests_6m"            "specimen_date"     
-# [6] "last_positive_variant"     "covid_hosps"              "date_death"               "covid_death"              "num_ppl_household"       
+# [6] "last_positive_variant"     "covid_hosps"              "death_date"               "covid_death"              "num_ppl_household"       
 # [11] "mean_household_age"       "sex"                      "age"                      "simd2020_sc_quintile"     "DataZone"                
 # [16] "urban_rural_6cat"         "age_group"                "age_group_2"              "age_group_3"              "eave_weight"             
 # [21] "Q_BMI"                    "Q_ETHNICITY"              "Q_HOME_CAT"               "Q_LEARN_CAT"              "Q_DIAG_CKD_LEVEL"        
