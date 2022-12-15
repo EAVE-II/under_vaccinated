@@ -25,20 +25,18 @@ names_map["num_tests_6m_group"] = "Number of tests in last 6 months"
 names_map["shielding"] = "Ever shielding"
 names_map["num_doses_time_2"] = "Number of doses"
 names_map["age_17cat"] = "Age group"
-names_map["covid_hosp_ever"] = "Previous COVID-19 hospitalisation"
+names_map["covid_mcoa_hosp_ever"] = "Previous COVID-19 hospitalisation"
 names_map["urban_rural_2cat"] = "Urban/rural classification"
+names_map['competing_hosp'] = "Competing non-COVID-19 hospitalisation"
 
 #### Functions
 
 # Saves table of person years, cumulative incidence curve, fits cox model and
 # saves results table, coefficients and covariance matrix
-cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, study_start, study_end) {
+cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, study_start, study_end, exclude_non_unit_weight) {
 
   # Hospitalisation or death
   dir = paste0(output_dir, "cox_", dep_var, "_", age_group)
-  if (!dir.exists(dir)) {
-    dir.create(dir)
-  }
 
   df_cohort = filter(df_cohort, age_3cat == age_group) %>%
     droplevels()
@@ -58,19 +56,83 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     )
   }
 
+  formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(ind_vars, collapse = " + ")))
+  
+  if (exclude_non_unit_weight){
+    
+    dir = paste0(dir, "_weight1")
+    if (!dir.exists(dir)) {
+      dir.create(dir)
+    }
+    
+    
+    df_survival = filter(df_survival, eave_weight == 1)
+    
+    # Robust standard errors are used by default if weights are not all equal to 1
+    model = coxph(formula, data = df_survival)
+    
+    # This takes up too much space
+    # tryCatch({
+    #   saveRDS(model, paste0(dir, "/model.rds"))
+    # }, 
+    # error = function(e){cat("ERROR :",conditionMessage(e), "\n")}
+    # )
+    
+  } else {
+    
+    if (!dir.exists(dir)) {
+      dir.create(dir)
+    }
+    
+    # Weighted Cox model
+    # Throws errors - not clear why
+    #
+    # survey_design = svydesign(id = ~1,
+    #                           weights = ~ eave_weight,
+    #                           data = df_survival)
+    #
+    # model = svycoxph( formula,
+    #                   design = survey_design,
+    #                   data = df_survival)
+    
+    # Normalise weight to 1 so standard errors are not distorted
+    df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
+    
+    # Robust standard errors are used by default if weights are not all equal to 1
+    model = coxph(formula, data = df_survival, weights = eave_weight)
+    
+    # This takes up too much space
+    # tryCatch({
+    #   saveRDS(model, paste0(dir, "/model.rds"))
+    # }, 
+    # error= function(e){cat("ERROR :",conditionMessage(e), "\n")}
+    # )
+  }
+  
+  # Results table
+  write.csv(create_cox_results_table(df_survival, model, ind_vars), paste0(dir, "/results.csv"), row.names = FALSE)
+
+  # Coefficients
+  coef = data.frame("variable" = names(coef(model)), "coef" = coef(model), row.names = 1:length(coef(model)))
+  write.csv(coef, paste0(dir, "/coef.csv"), row.names = FALSE)
+
+  # Covariance matrix
+  cov = vcov(model)
+  write.csv(cov, paste0(dir, "/cov.csv"))
+  
   # Cumulative incidence curve
   plot = survfit(Surv(tstart, tstop, event) ~ num_doses_time_2,
-    # Reset the origin to take account of tim
-    data = df_survival %>%
-      group_by(individual_id, num_doses_time_2) %>%
-      mutate(
-        offset = min(tstart),
-        tstart = tstart - offset,
-        tstop = tstop - offset
-      ) %>%
-      select(-offset) %>%
-      ungroup() %>%
-      droplevels()
+                 # Reset the origin to take account of tim
+                 data = df_survival %>%
+                   group_by(individual_id, num_doses_time_2) %>%
+                   mutate(
+                     offset = min(tstart),
+                     tstart = tstart - offset,
+                     tstop = tstop - offset
+                   ) %>%
+                   select(-offset) %>%
+                   ungroup() %>%
+                   droplevels()
   ) %>%
     tidy() %>%
     mutate(
@@ -91,39 +153,8 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     labs(color = "Number of doses") +
     labs(fill = "Number of doses") +
     theme_bw()
-
-  ggsave(paste0(dir, "/cumulative_incidence.png"))
-
-  # Weighted Cox model
-  # Throws errors - not clear why
-  # formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(ind_vars, collapse = " + ")))
-  #
-  # survey_design = svydesign(id = ~1,
-  #                           weights = ~ eave_weight,
-  #                           data = df_survival)
-  #
-  # model = svycoxph( formula,
-  #                   design = survey_design,
-  #                   data = df_survival)
-
-  # Normalise weight to 1 so standard errors are not distorted
-  df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
-
-  # Robust standard errors are used by default if weights are not all equal to 1
-  model = coxph(formula, data = df_survival, weights = eave_weight)
   
-  saveRDS(model, paste0(dir, "/model.rds"))
-
-  # Results table
-  write.csv(create_cox_results_table(df_survival, model, ind_vars), paste0(dir, "/results.csv"), row.names = FALSE)
-
-  # Coefficients
-  coef = data.frame("variable" = names(coef(model)), "coef" = coef(model), row.names = 1:length(coef(model)))
-  write.csv(coef, paste0(dir, "/coef.csv"), row.names = FALSE)
-
-  # Covariance matrix
-  cov = vcov(model)
-  write.csv(cov, paste0(dir, "/cov.csv"))
+  ggsave(paste0(dir, "/cumulative_incidence.png"))
 }
 
 
@@ -172,7 +203,6 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
   df = tmerge(df, df_vs, id = individual_id, exposure = tdc(time, vs)) %>%
     rename(vs_time = exposure)
   
-  
   # If event involves hospitalisation, put in competing hospitalisation events
   # as time-dependent variable
   if (str_detect(event_col, 'hosp')){
@@ -180,16 +210,17 @@ create_df_survival = function(df, event_col, calendar_days, study_start, study_e
     # dataframe of start times for other hospitalisations
     df_competing_hosp = select(df, individual_id, !!sym(paste0('non_', event_date_col))) %>%
       mutate(
-        no_competing_hosp = -Inf,
-        competing_hosp = as.numeric(!!sym(paste0('non_', event_date_col)) - study_start),
+        `0` = -Inf,
+        `1` = as.numeric(!!sym(paste0('non_', event_date_col)) - study_start),
       ) %>%
       select(-!!sym(paste0('non_', event_date_col)))
     
     df_competing_hosp = pivot_longer(df_competing_hosp,
-                         cols = c("no_competing_hosp", "competing_hosp"),
+                         cols = c("0", "1"),
                          names_to = "competing_hosp", values_to = "time"
     ) %>%
-      filter(!is.na(time))
+      filter(!is.na(time)) %>%
+      mutate(competing_hosp = as.numeric(competing_hosp))
     
     # Add in vaccination status as a time dependent variable
     df = tmerge(df, df_competing_hosp, id = individual_id, exposure = tdc(time, competing_hosp)) %>%
@@ -312,31 +343,50 @@ cox_ind_vars = c(
   "num_doses_time_2"
 )
 
+endpoint_names = c(
+  "covid_death", 
+  "covid_acoa_hosp",
+  "covid_mcoa_hosp",
+  "covid_mcoa_28_2_hosp",
+  "covid_mcoa_14_2_hosp",
+  "covid_mcoa_hosp_death")
 
-for (age_group in c("5-17", "18-74", "75+")) {
-  print(age_group)
 
-  for (dep_var in c("covid_death", "covid_hosp", "covid_hosp_death")) {
-    print(dep_var)
 
-    cox_analysis(df_cohort,
-      age_group = age_group,
-      dep_var = dep_var,
-      ind_vars = cox_ind_vars,
-      calendar_days = NA,
-      study_start = study_start,
-      study_end = study_end
+for (dep_var in endpoint_names) {
+  print(dep_var)
+  
+  for (age_group in c("5-17", "18-74", "75+")) {
+    print(age_group)
+    
+    for (exclude_non_unit_weight in c(TRUE, FALSE)){
+      print(exclude_non_unit_weight)
+      
+      if (dep_var == 'covid_death'){
+        ind_vars = setdiff(cox_ind_vars, 'competing_hosp')
+      } else {
+        ind_vars = cox_ind_vars
+      }
+  
+      cox_analysis(df_cohort,
+        age_group = age_group,
+        dep_var = dep_var,
+        ind_vars = ind_vars,
+        calendar_days = NA,
+        study_start = study_start,
+        study_end = study_end,
+        exclude_non_unit_weight = exclude_non_unit_weight
     )
+    }
   }
 }
-
 
 
 #### Tests
 #
 # df_cohort_test = df_cohort %>%
-#   filter(age_3cat == "5-17")
-# df_cohort_test = filter(df_cohort_test, individual_id %in% sample(df_cohort_test$individual_id, 100)) %>%
+#   filter(age_3cat == "18-74")
+# df_cohort_test = filter(df_cohort_test, individual_id %in% sample(df_cohort_test$individual_id, 100000)) %>%
 #   droplevels()
 # 
 # df_survival = create_df_survival(df_cohort_test,
@@ -348,7 +398,11 @@ for (age_group in c("5-17", "18-74", "75+")) {
 #   df_survival, individual_id, age_3cat, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
 #   vacc_type_1, vacc_type_2, vacc_type_3, vacc_type_4, vacc_type_5,
 #   num_doses_start, num_doses_recent, vacc_seq_start, vacc_seq_recent,
-#   vs_start, vs_recent, fully_vaccinated, vs_mixed_start, event, surv_date,
+#   vs_start, vs_recent, fully_vaccinated, vs_mixed_start,
+#   covid_death_date, covid_acoa_hosp_date, covid_mcoa_hosp_date,
+#   non_covid_mcoa_hosp_date, covid_mcoa_28_2_hosp_date, covid_mcoa_14_2_hosp, covid_mcoa_hosp_death_date, 
+#   non_covid_acoa_hosp_date, non_covid_mcoa_28_2_hosp_date,
+#   non_covid_mcoa_14_2_hosp_date, competing_hosp, event, surv_date,
 #   tstart, tstop, duration, num_doses_time
 # )
 # 
@@ -360,7 +414,7 @@ for (age_group in c("5-17", "18-74", "75+")) {
 # #   weights = ~eave_weight,
 # #   data = df_survival
 # # )
-# # 
+# #
 # # model = svycoxph(formula,
 # #   design = survey_design,
 # #   data = df_survival
@@ -374,9 +428,10 @@ for (age_group in c("5-17", "18-74", "75+")) {
 # 
 # cox_analysis(df_cohort,
 #   age_group = "18-74",
-#   dep_var = "covid_hosp_death",
+#   dep_var = "covid_mcoa_hosp_death",
 #   ind_vars = cox_ind_vars,
 #   calendar_days = 0,
 #   study_start,
-#   study_end
+#   study_end,
+#   exclude_non_unit_weight = TRUE
 # )

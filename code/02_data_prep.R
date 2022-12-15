@@ -17,11 +17,14 @@ setwd("/conf/EAVE/GPanalysis/analyses/under_vaccinated")
 # For reproducing any randomisation
 set.seed(1234)
 
+study_start = as.Date("2022-06-01")
+study_end = as.Date("2022-09-30")
+
 #### Create cohort dataframe with all required variables my merging togehter individual datasets
 
 df_cohort <- EAVE_cohort %>%
   #For testing
-  sample_n(1000) %>%
+  #sample_n(1000) %>%
   filter(age >= 5) %>%
   mutate(
     age_3cat = cut(age,
@@ -85,9 +88,24 @@ q_names <- grep("Q", names(df_cohort), value = TRUE)
 # Create a list of cols where NA means 0
 cols <- setdiff(q_names, c("Q_BMI", "Q_ETHNICITY"))
 
-# Add vaccinations, and vaccine related derived variables
+# Add Vaccinations, and vaccine related derived variables
 df_cohort <- left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
-  # Number of doses they have had according to most recent data
+  mutate(
+    # If someone has e.g. a date_vacc_3, but no record of second dose, assume they got a second dose and set vacc_type_2 to Unknown
+    vacc_type_1 = case_when(
+      is.na(vacc_type_1) & (!is.na(date_vacc_2) | !is.na(date_vacc_3)| !is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
+      TRUE ~ vacc_type_1),
+    vacc_type_2 = case_when(
+      is.na(vacc_type_2) & (!is.na(date_vacc_3) | !is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
+      TRUE ~ vacc_type_2),
+    vacc_type_3 = case_when(
+      is.na(vacc_type_3) & (!is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
+      TRUE ~ vacc_type_3),
+    vacc_type_4 = case_when(
+      is.na(vacc_type_4) &!is.na(date_vacc_5) ~ 'Unk',
+      TRUE ~ vacc_type_4)
+  ) %>%
+  # Number of doses they have had according to most recent data, up to dose 5
   mutate(
     num_doses_recent = case_when(
       !is.na(date_vacc_5) ~ 5,
@@ -96,8 +114,37 @@ df_cohort <- left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
       !is.na(date_vacc_2) ~ 2,
       !is.na(date_vacc_1) ~ 1,
       TRUE ~ 0
-    ),
-    # Number of doses at study_start
+    )
+  ) %>%
+  mutate(
+    # Add winter booster dose as numbered vaccine dose
+    # Vaccine type
+    vacc_type_5 = ifelse(is.na(date_vacc_5) & date_vacc_wb > date_vacc_4 + 19, vacc_type_wb, vacc_type_5),
+    vacc_type_4 = ifelse(is.na(date_vacc_5) & is.na(date_vacc_4) & date_vacc_wb > date_vacc_3 + 19, vacc_type_wb, vacc_type_4),
+    vacc_type_3 = ifelse(is.na(date_vacc_5) & is.na(date_vacc_4) & is.na(date_vacc_3) & date_vacc_wb > date_vacc_2 + 19,
+                         vacc_type_wb, vacc_type_3),
+    vacc_type_2 = ifelse(is.na(date_vacc_5) & is.na(date_vacc_4) & is.na(date_vacc_3) & is.na(date_vacc_2) & 
+                           date_vacc_wb > date_vacc_1 + 19, vacc_type_wb, vacc_type_2),
+    vacc_type_1 = ifelse(is.na(date_vacc_5) & is.na(date_vacc_4) & is.na(date_vacc_3) & is.na(date_vacc_2) & is.na(date_vacc_1) & 
+                           !is.na(date_vacc_wb), vacc_type_wb, vacc_type_1),
+    
+    # Vaccine date
+    date_vacc_5 = ifelse(is.na(date_vacc_5) & date_vacc_wb > date_vacc_4 + 19, date_vacc_wb, date_vacc_5) %>%
+      as.Date(origin = "1970-01-01"),
+    date_vacc_4 = ifelse(is.na(date_vacc_5) & is.na(date_vacc_4) & date_vacc_wb > date_vacc_3 + 19, date_vacc_wb, date_vacc_4) %>%
+      as.Date(origin = "1970-01-01"),
+    date_vacc_3 = ifelse(is.na(date_vacc_5) & is.na(date_vacc_4) & is.na(date_vacc_3) & date_vacc_wb > date_vacc_2 + 19,
+      date_vacc_wb, date_vacc_3) %>%
+      as.Date(origin = "1970-01-01"),
+    date_vacc_2 = ifelse(is.na(date_vacc_5) & is.na(date_vacc_4) & is.na(date_vacc_3) & is.na(date_vacc_2) & 
+      date_vacc_wb > date_vacc_1 + 19, date_vacc_wb, date_vacc_2) %>%
+      as.Date(origin = "1970-01-01"),
+    date_vacc_1 = ifelse(is.na(date_vacc_5) & is.na(date_vacc_4) & is.na(date_vacc_3) & is.na(date_vacc_2) & is.na(date_vacc_1) & 
+      !is.na(date_vacc_wb), date_vacc_wb, date_vacc_1) %>%
+      as.Date(origin = "1970-01-01")
+  ) %>%
+  mutate(
+    # Number of doses at study_start, up to dose 5
     num_doses_start = case_when(
       date_vacc_5 <= study_start ~ 5,
       date_vacc_4 <= study_start ~ 4,
@@ -283,10 +330,10 @@ df_cohort <- wgs %>%
   )
 
 # Add number of PCR tests in last 6 months before study_start
-tests_before_study_start = filter(cdw, specimen_date < study_start)
+tests_before_study_start = filter(cdw, specimen_date < study_start, specimen_date >= study_start %m-% months(6))
 pos_tests_before_study_start = filter(tests_before_study_start, test_result == "POSITIVE")
 
-df_cohort <- filter(tests_before_study_start, specimen_date >= study_start %m-% months(6)) %>%
+df_cohort <- tests_before_study_start %>%
   count(EAVE_LINKNO) %>%
   rename(num_tests_6m = n) %>%
   select(EAVE_LINKNO, num_tests_6m) %>%
@@ -300,7 +347,7 @@ df_cohort <- filter(tests_before_study_start, specimen_date >= study_start %m-% 
 
 
 # Add number of positive PCR tests in last 6 months before study_start
-df_cohort <- filter(pos_tests_before_study_start, specimen_date >= study_start %m-% months(6)) %>%
+df_cohort <- pos_tests_before_study_start %>%
   count(EAVE_LINKNO) %>%
   rename(num_pos_tests_6m = n) %>%
   select(EAVE_LINKNO, num_pos_tests_6m) %>%
@@ -314,7 +361,9 @@ df_cohort <- filter(pos_tests_before_study_start, specimen_date >= study_start %
 
 rm(tests_before_study_start, pos_tests_before_study_start)
 
-# Add endpoints
+
+
+## Add endpoints
 
 study_hosps = filter(smr, hosp_date >= study_start, hosp_date <= study_end)
 
@@ -350,12 +399,12 @@ df_cohort = study_covid_mcoa_hosps %>%
 
 # Add covid hospitalistions with covid as main cause of admission and positive PCR test within 28 days prior to admission or 2 days after
 df_cohort = study_covid_mcoa_hosps %>%
-  arrange(EAVE_LINKNO, hosp_date) %>%
-  filter(!duplicated(EAVE_LINKNO)) %>%
   left_join(cdw) %>%
   mutate(
     specimen_to_hosp = hosp_date - specimen_date) %>%
   filter(specimen_to_hosp <= 28 & specimen_to_hosp >= -2) %>%
+  arrange(EAVE_LINKNO, hosp_date) %>%
+  filter(!duplicated(EAVE_LINKNO)) %>%
   select(
     EAVE_LINKNO, 
     covid_mcoa_28_2_hosp_date = hosp_date) %>%
@@ -365,12 +414,12 @@ df_cohort = study_covid_mcoa_hosps %>%
 
 # Add covid hospitalistions with covid as main cause of admission and positive PCR test within 14 days prior to admission or 2 days after
 df_cohort = study_covid_mcoa_hosps %>%
-  arrange(EAVE_LINKNO, hosp_date) %>%
-  filter(!duplicated(EAVE_LINKNO)) %>%
   left_join(cdw) %>%
   mutate(
     specimen_to_hosp = hosp_date - specimen_date) %>%
   filter(specimen_to_hosp <= 14 & specimen_to_hosp >= -2) %>%
+  arrange(EAVE_LINKNO, hosp_date) %>%
+  filter(!duplicated(EAVE_LINKNO)) %>%
   select(
     EAVE_LINKNO, 
     covid_mcoa_14_2_hosp_date = hosp_date) %>%
@@ -387,18 +436,6 @@ df_cohort = study_hosps %>%
     hosp_date = hosp_date) %>%
   right_join(df_cohort)
 
-df_cohort = df_cohort %>%
-  mutate(
-    non_covid_mcoa_hosp_date = ifelse(hosp_date < covid_mcoa_hosp_date, hosp_date, as.Date(NA)) %>%
-      as.Date(origin = "1970-01-01"),
-    non_covid_acoa_hosp_date = ifelse(hosp_date < covid_acoa_hosp_date, hosp_date, as.Date(NA)) %>%
-      as.Date(origin = "1970-01-01"),
-    non_covid_mcoa_28_2_hosp_date = ifelse(hosp_date < covid_mcoa_28_2_hosp_date, hosp_date, as.Date(NA)) %>%
-      as.Date(origin = "1970-01-01"),
-    non_covid_mcoa_14_2_hosp_date = ifelse(hosp_date < covid_mcoa_14_2_hosp_date, hosp_date, as.Date(NA)) %>%
-      as.Date(origin = "1970-01-01")
-)
-
 # Add covid deaths
 df_cohort = all_deaths %>%
   filter(covid_death == 1) %>%
@@ -412,14 +449,30 @@ df_cohort = all_deaths %>%
 # Add covid hospitalisation or death
 df_cohort = df_cohort %>%
   mutate(
-    covid_hosp_mcoa_death = ifelse(covid_mcoa_hosp == 1 | covid_death == 1, 1, 0),
-    covid_hosp_mcoa_death_date = ifelse(covid_hosp_mcoa_death == 1, pmin(covid_mcoa_hosp_date, covid_death_date, na.rm = TRUE), as.Date(NA))
+    covid_mcoa_hosp_death = ifelse(covid_mcoa_hosp == 1 | covid_death == 1, 1, 0),
+    covid_mcoa_hosp_death_date = ifelse(covid_mcoa_hosp_death == 1, pmin(covid_mcoa_hosp_date, covid_death_date, na.rm = TRUE), as.Date(NA)) %>%
+      as.Date(origin = "1970-01-01")
+  ) 
+
+df_cohort = df_cohort %>%
+  mutate(
+    non_covid_mcoa_hosp_date = ifelse(hosp_date < covid_mcoa_hosp_date, hosp_date, as.Date(NA)) %>%
+      as.Date(origin = "1970-01-01"),
+    non_covid_acoa_hosp_date = ifelse(hosp_date < covid_acoa_hosp_date, hosp_date, as.Date(NA)) %>%
+      as.Date(origin = "1970-01-01"),
+    non_covid_mcoa_28_2_hosp_date = ifelse(hosp_date < covid_mcoa_28_2_hosp_date, hosp_date, as.Date(NA)) %>%
+      as.Date(origin = "1970-01-01"),
+    non_covid_mcoa_14_2_hosp_date = ifelse(hosp_date < covid_mcoa_14_2_hosp_date, hosp_date, as.Date(NA)) %>%
+      as.Date(origin = "1970-01-01"),
+    non_covid_mcoa_hosp_death_date = ifelse(hosp_date < covid_mcoa_hosp_death_date, hosp_date, as.Date(NA)) %>%
+      as.Date(origin = "1970-01-01")
   )
            
 # Add previous covid hospitalisation
 df_cohort = filter(smr, covid_main_diag_admit == 1, hosp_date < study_start) %>%
   mutate(covid_mcoa_hosp_ever = 1) %>%
   select(EAVE_LINKNO, covid_mcoa_hosp_ever) %>%
+  filter(!duplicated(EAVE_LINKNO)) %>%
   right_join(df_cohort) %>%
   mutate(covid_mcoa_hosp_ever = replace_na(covid_mcoa_hosp_ever, 0))
   
@@ -467,42 +520,336 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 
 #### df_cohort has the following columns:
 
-# [1] "individual_id"                       "covid_mcoa_hosp_ever"                "death_date"                         
-# [4] "covid_death"                         "hosp_date"                     "covid_mcoa_14_2_hosp_date"          
-# [7] "covid_mcoa_28_2_hosp_date"           "covid_mcoa_hosp_date"                "covid_acoa_hosp_date"               
-# [10] "num_pos_tests_6m"                    "num_tests_6m"                        "specimen_date"                      
-# [13] "last_positive_variant"               "sex"                                 "age"                                
-# [16] "simd2020_sc_quintile"                "DataZone"                            "urban_rural_6cat"                   
-# [19] "age_group"                           "age_group_2"                         "age_group_3"                        
-# [22] "eave_weight"                         "Q_BMI"                               "Q_ETHNICITY"                        
-# [25] "Q_HOME_CAT"                          "Q_LEARN_CAT"                         "Q_DIAG_CKD_LEVEL"                   
-# [28] "Q_DIAG_AF"                           "Q_DIAG_ASTHMA"                       "Q_DIAG_BLOOD_CANCER"                
-# [31] "Q_DIAG_CCF"                          "Q_DIAG_CEREBRALPALSY"                "Q_DIAG_CHD"                         
-# [34] "Q_DIAG_CIRRHOSIS"                    "Q_DIAG_CONGEN_HD"                    "Q_DIAG_COPD"                        
-# [37] "Q_DIAG_DEMENTIA"                     "Q_DIAG_EPILEPSY"                     "Q_DIAG_FRACTURE"                    
-# [40] "Q_DIAG_HIV_AIDS"                     "Q_DIAG_IMMU"                         "Q_DIAG_NEURO"                       
-# [43] "Q_DIAG_PARKINSONS"                   "Q_DIAG_PULM_HYPER"                   "Q_DIAG_PULM_RARE"                   
-# [46] "Q_DIAG_PVD"                          "Q_DIAG_RA_SLE"                       "Q_DIAG_RESP_CANCER"                 
-# [49] "Q_DIAG_SEV_MENT_ILL"                 "Q_DIAG_SICKLE_CELL"                  "Q_DIAG_STROKE"                      
-# [52] "Q_DIAG_VTE"                          "n_risk_gps"                          "Q_DIAG_DIABETES_1"                  
-# [55] "Q_DIAG_DIABETES_2"                   "bmi_cat"                             "smoking_status"                     
-# [58] "blood_pressure"                      "date_vacc_1"                         "date_vacc_2"                        
-# [61] "date_vacc_3"                         "date_vacc_4"                         "date_vacc_5"                        
-# [64] "vacc_type_1"                         "vacc_type_2"                         "vacc_type_3"                        
-# [67] "vacc_type_4"                         "vacc_type_5"                         "vacc_type_NA"                       
-# [70] "vacc_type_6"                         "vacc_type_7"                         "num_doses_recent"                   
-# [73] "num_doses_start"                     "vacc_seq_recent"                     "vacc_seq_start"                     
-# [76] "mixed_vacc_recent"                   "mixed_vacc_start"                    "vs_recent"                          
-# [79] "vs_start"                            "fully_vaccinated"                    "vs_mixed_start"                     
-# [82] "vs_mixed_recent"                     "mean_household_age"                  "num_ppl_household"                  
-# [85] "shielding"                           "last_positive_test"                  "last_positive_test_group"           
-# [88] "num_tests_6m_group"                  "covid_acoa_hosp"                     "covid_mcoa_hosp"                    
-# [91] "covid_mcoa_28_2_hosp"                "covid_mcoa_14_2_hosp"                "non_covid_mcoa_hosp_date"     
-# [94] "non_covid_acoa_hosp_date"      "non_covid_mcoa_28_2_hosp_date" "non_covid_mcoa_14_2_hosp_date"
-# [97] "covid_hosp_mcoa_death"               "covid_hosp_mcoa_death_date" 
+# [1] "individual_id"                  "covid_mcoa_hosp_ever"           "death_date"                     "covid_death"                   
+# [5] "hosp_date"                      "covid_mcoa_14_2_hosp_date"      "covid_mcoa_28_2_hosp_date"      "covid_mcoa_hosp_date"          
+# [9] "covid_acoa_hosp_date"           "num_pos_tests_6m"               "num_tests_6m"                   "specimen_date"                 
+# [13] "last_positive_variant"          "sex"                            "age"                            "urban_rural_6cat"              
+# [17] "simd2020_sc_quintile"           "urban_rural_2cat"               "age_3cat"                       "age_4cat"                      
+# [21] "age_17cat"                      "eave_weight"                    "Q_BMI"                          "Q_ETHNICITY"                   
+# [25] "Q_HOME_CAT"                     "Q_LEARN_CAT"                    "Q_DIAG_CKD_LEVEL"               "Q_DIAG_AF"                     
+# [29] "Q_DIAG_ASTHMA"                  "Q_DIAG_BLOOD_CANCER"            "Q_DIAG_CCF"                     "Q_DIAG_CEREBRALPALSY"          
+# [33] "Q_DIAG_CHD"                     "Q_DIAG_CIRRHOSIS"               "Q_DIAG_CONGEN_HD"               "Q_DIAG_COPD"                   
+# [37] "Q_DIAG_DEMENTIA"                "Q_DIAG_EPILEPSY"                "Q_DIAG_FRACTURE"                "Q_DIAG_HIV_AIDS"               
+# [41] "Q_DIAG_IMMU"                    "Q_DIAG_NEURO"                   "Q_DIAG_PARKINSONS"              "Q_DIAG_PULM_HYPER"             
+# [45] "Q_DIAG_PULM_RARE"               "Q_DIAG_PVD"                     "Q_DIAG_RA_SLE"                  "Q_DIAG_RESP_CANCER"            
+# [49] "Q_DIAG_SEV_MENT_ILL"            "Q_DIAG_SICKLE_CELL"             "Q_DIAG_STROKE"                  "Q_DIAG_VTE"                    
+# [53] "n_risk_gps"                     "Q_DIAG_DIABETES_1"              "Q_DIAG_DIABETES_2"              "bmi_cat"                       
+# [57] "smoking_status"                 "blood_pressure"                 "vacc_type_1"                    "vacc_type_2"                   
+# [61] "date_vacc_1"                    "date_vacc_2"                    "vacc_type_3"                    "date_vacc_3"                   
+# [65] "vacc_type_4"                    "date_vacc_4"                    "vacc_type_5"                    "date_vacc_5"                   
+# [69] "vacc_type_wb"                   "date_vacc_wb"                   "num_doses_recent"               "num_doses_start"               
+# [73] "vacc_seq_recent"                "vacc_seq_start"                 "mixed_vacc_recent"              "mixed_vacc_start"              
+# [77] "vs_recent"                      "vs_start"                       "fully_vaccinated"               "vs_mixed_start"                
+# [81] "vs_mixed_recent"                "mean_household_age"             "num_ppl_household"              "shielding"                     
+# [85] "last_positive_test"             "last_positive_test_group"       "num_tests_6m_group"             "covid_acoa_hosp"               
+# [89] "covid_mcoa_hosp"                "covid_mcoa_28_2_hosp"           "covid_mcoa_14_2_hosp"           "covid_death_date"              
+# [93] "covid_mcoa_hosp_death"          "covid_mcoa_hosp_death_date"     "non_covid_mcoa_hosp_date"       "non_covid_acoa_hosp_date"      
+# [97] "non_covid_mcoa_28_2_hosp_date"  "non_covid_mcoa_14_2_hosp_date"  "non_covid_mcoa_hosp_death_date"
 
 
-#### Variable descriptions
+
+#### df_cohort column types:
+
+# $individual_id
+# [1] "character"
+# 
+# $covid_mcoa_hosp_ever
+# [1] "numeric"
+# 
+# $death_date
+# [1] "Date"
+# 
+# $covid_death
+# [1] "numeric"
+# 
+# $hosp_date
+# [1] "Date"
+# 
+# $covid_mcoa_14_2_hosp_date
+# [1] "Date"
+# 
+# $covid_mcoa_28_2_hosp_date
+# [1] "Date"
+# 
+# $covid_mcoa_hosp_date
+# [1] "Date"
+# 
+# $covid_acoa_hosp_date
+# [1] "Date"
+# 
+# $num_pos_tests_6m
+# [1] "factor"
+# 
+# $num_tests_6m
+# [1] "integer"
+# 
+# $specimen_date
+# [1] "Date"
+# 
+# $last_positive_variant
+# [1] "factor"
+# 
+# $sex
+# [1] "factor"
+# 
+# $age
+# [1] "numeric"
+# 
+# $urban_rural_6cat
+# [1] "factor"
+# 
+# $simd2020_sc_quintile
+# [1] "factor"
+# 
+# $urban_rural_2cat
+# [1] "character"
+# 
+# $age_3cat
+# [1] "factor"
+# 
+# $age_4cat
+# [1] "factor"
+# 
+# $age_17cat
+# [1] "factor"
+# 
+# $eave_weight
+# [1] "numeric"
+# 
+# $Q_BMI
+# [1] "numeric"
+# 
+# $Q_ETHNICITY
+# [1] "character"
+# 
+# $Q_HOME_CAT
+# [1] "factor"
+# 
+# $Q_LEARN_CAT
+# [1] "factor"
+# 
+# $Q_DIAG_CKD_LEVEL
+# [1] "factor"
+# 
+# $Q_DIAG_AF
+# [1] "numeric"
+# 
+# $Q_DIAG_ASTHMA
+# [1] "numeric"
+# 
+# $Q_DIAG_BLOOD_CANCER
+# [1] "numeric"
+# 
+# $Q_DIAG_CCF
+# [1] "numeric"
+# 
+# $Q_DIAG_CEREBRALPALSY
+# [1] "numeric"
+# 
+# $Q_DIAG_CHD
+# [1] "numeric"
+# 
+# $Q_DIAG_CIRRHOSIS
+# [1] "numeric"
+# 
+# $Q_DIAG_CONGEN_HD
+# [1] "numeric"
+# 
+# $Q_DIAG_COPD
+# [1] "numeric"
+# 
+# $Q_DIAG_DEMENTIA
+# [1] "numeric"
+# 
+# $Q_DIAG_EPILEPSY
+# [1] "numeric"
+# 
+# $Q_DIAG_FRACTURE
+# [1] "numeric"
+# 
+# $Q_DIAG_HIV_AIDS
+# [1] "numeric"
+# 
+# $Q_DIAG_IMMU
+# [1] "numeric"
+# 
+# $Q_DIAG_NEURO
+# [1] "numeric"
+# 
+# $Q_DIAG_PARKINSONS
+# [1] "numeric"
+# 
+# $Q_DIAG_PULM_HYPER
+# [1] "numeric"
+# 
+# $Q_DIAG_PULM_RARE
+# [1] "numeric"
+# 
+# $Q_DIAG_PVD
+# [1] "numeric"
+# 
+# $Q_DIAG_RA_SLE
+# [1] "numeric"
+# 
+# $Q_DIAG_RESP_CANCER
+# [1] "numeric"
+# 
+# $Q_DIAG_SEV_MENT_ILL
+# [1] "numeric"
+# 
+# $Q_DIAG_SICKLE_CELL
+# [1] "numeric"
+# 
+# $Q_DIAG_STROKE
+# [1] "numeric"
+# 
+# $Q_DIAG_VTE
+# [1] "numeric"
+# 
+# $n_risk_gps
+# [1] "factor"
+# 
+# $Q_DIAG_DIABETES_1
+# [1] "numeric"
+# 
+# $Q_DIAG_DIABETES_2
+# [1] "numeric"
+# 
+# $bmi_cat
+# [1] "factor"
+# 
+# $smoking_status
+# [1] "factor"
+# 
+# $blood_pressure
+# [1] "factor"
+# 
+# $vacc_type_1
+# [1] "character"
+# 
+# $vacc_type_2
+# [1] "character"
+# 
+# $date_vacc_1
+# [1] "Date"
+# 
+# $date_vacc_2
+# [1] "Date"
+# 
+# $vacc_type_3
+# [1] "character"
+# 
+# $date_vacc_3
+# [1] "Date"
+# 
+# $vacc_type_4
+# [1] "character"
+# 
+# $date_vacc_4
+# [1] "Date"
+# 
+# $vacc_type_5
+# [1] "character"
+# 
+# $date_vacc_5
+# [1] "Date"
+# 
+# $vacc_type_wb
+# [1] "character"
+# 
+# $date_vacc_wb
+# [1] "Date"
+# 
+# $num_doses_recent
+# [1] "numeric"
+# 
+# $num_doses_start
+# [1] "numeric"
+# 
+# $vacc_seq_recent
+# [1] "character"
+# 
+# $vacc_seq_start
+# [1] "character"
+# 
+# $mixed_vacc_recent
+# [1] "numeric"
+# 
+# $mixed_vacc_start
+# [1] "numeric"
+# 
+# $vs_recent
+# [1] "character"
+# 
+# $vs_start
+# [1] "character"
+# 
+# $fully_vaccinated
+# [1] "factor"
+# 
+# $vs_mixed_start
+# [1] "character"
+# 
+# $vs_mixed_recent
+# [1] "character"
+# 
+# $mean_household_age
+# [1] "numeric"
+# 
+# $num_ppl_household
+# [1] "factor"
+# 
+# $shielding
+# [1] "numeric"
+# 
+# $last_positive_test
+# [1] "numeric"
+# 
+# $last_positive_test_group
+# [1] "factor"
+# 
+# $num_tests_6m_group
+# [1] "factor"
+# 
+# $covid_acoa_hosp
+# [1] "numeric"
+# 
+# $covid_mcoa_hosp
+# [1] "numeric"
+# 
+# $covid_mcoa_28_2_hosp
+# [1] "numeric"
+# 
+# $covid_mcoa_14_2_hosp
+# [1] "numeric"
+# 
+# $covid_death_date
+# [1] "Date"
+# 
+# $covid_mcoa_hosp_death
+# [1] "numeric"
+# 
+# $covid_mcoa_hosp_death_date
+# [1] "Date"
+# 
+# $non_covid_mcoa_hosp_date
+# [1] "Date"
+# 
+# $non_covid_acoa_hosp_date
+# [1] "Date"
+# 
+# $non_covid_mcoa_28_2_hosp_date
+# [1] "Date"
+# 
+# $non_covid_mcoa_14_2_hosp_date
+# [1] "Date"
+# 
+# $non_covid_mcoa_hosp_death_date
+# [1] "Date"
+
+
+
+#### df_cohort variable descriptions
 
 # individual_id is what you think it is
 
@@ -522,9 +869,9 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # covid_mcoa_28_2_hosp_date is date of first hospitalisation with covid as main cause of admission
 # and with a positive PCR test in the 28 days before admission or 2 days after
 
-# covid_mcoa_hosp_date" is date of first hospitalisation with covid as main cause of admission
+# covid_mcoa_hosp_date is date of first hospitalisation with covid as main cause of admission
 
-# covid_acoa_hosp_date" is date of first hospitalisation with covid as any cause of admission
+# covid_acoa_hosp_date is date of first hospitalisation with covid as any cause of admission
 
 # num_pos_tests_6m is the number of positive tests they have had in the last 6 months before study_start
 # Its levels are: 0, 1, 2+
@@ -629,10 +976,10 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # non_covid_acoa_hosp_date is date of first hospitalisation that is not a covid_acoa_hosp
 # non_covid_mcoa_28_2_hosp_date is date of first hospitalisation that is not a covid_28_2_mcoa_hosp
 # non_covid_mcoa_14_2_hosp_date is date of first hospitalisation that is not a covid_14_2_mcoa_hosp
+# non_covid_mcoa_hosp_death_date is date of first hospitalisation that is not a covid_mcoa_hosp_death
 
 # covid_mcoa_hosp_death is whether they had a hospitalisation with covid as main cause of admission
 # or a covid death
 
-# covid_mcoa_hosp_death)_date is first date of hospitalisation with covid as main cause of admission
+# covid_mcoa_hosp_death_date is first date of hospitalisation with covid as main cause of admission
 # or covid death
-

@@ -124,7 +124,7 @@ qcovid_rg <- readRDS(paste0(Location, "EAVE/GPanalysis/data/cleaned_data/QCOVID_
 qcovid_diabetes <- readRDS("/conf/EAVE/GPanalysis/progs/CR/Vaccine/output/temp/Qcovid.rds") %>%
   select(EAVE_LINKNO, Q_DIAG_DIABETES_1, Q_DIAG_DIABETES_2)
 
-qcovid_rg <- full_join(qcovid_rg, qcovid_diabetes)
+qcovid_rg <- left_join(qcovid_rg, qcovid_diabetes)
 
 # Blood pressure and smoking status
 eave_rg <- readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/CR_Cohort_RG_EAVE_BP_Smoke.rds")) %>%
@@ -189,66 +189,78 @@ smr <- readRDS(paste0(Location, "EAVE/GPanalysis/data/SMR01_allstays.rds")) %>%
   )
 
 ## Vaccinations
-Vaccinations <- readRDS(paste0(Location, "/EAVE/GPanalysis/data/cleaned_data/C19vaccine_dvprod_cleaned.rds"))
+source(paste0(Location, "EAVE/GPanalysis/progs/Data_Cleaning/00_Read_DV_Vaccinations_Dose5.R")) 
 
 Vaccinations = Vaccinations %>%
-  select(EAVE_LINKNO, first_dose, second_dose, third_dose, fourth_dose, fifth_dose,
-         vacc_dose_number, vacc_product_name
-  ) %>%
-  mutate(
-    vacc_product_name = gsub("Covid-19 Vaccine AstraZeneca", "AZ", vacc_product_name),
-    vacc_product_name = gsub("Covid-19 mRNA Vaccine Pfizer", "PB", vacc_product_name),
-    vacc_product_name = gsub("Covid-19 mRNA Vaccine Moderna", "Mo", vacc_product_name),
-    vacc_product_name = gsub("Covid-19 mRNA Vaccine Spikevax Bivalent Moderna", "Mo", vacc_product_name),
-    vacc_product_name = gsub("Covid-19 mRNA Vaccine Comirnaty Bivalent Pfizer", "PB", vacc_product_name),
-    vacc_product_name = gsub("Covid-19 Vaccine Novavax", "No", vacc_product_name)
-  ) %>%
-  # 4th and 5th dose vaccinations with the moderna bivalent vaccine are not currently picked up
-  mutate(vacc_dose_number = case_when(
-    !is.na(fifth_dose) & is.na(vacc_dose_number) ~ 5,
-    !is.na(fourth_dose) & is.na(vacc_dose_number) ~ 4,
-    TRUE ~ vacc_dose_number
-  )) %>%
-  pivot_wider(
-    id_cols = c(
-      "EAVE_LINKNO", "first_dose", "second_dose", "third_dose", "fourth_dose", "fifth_dose"
-    ),
-    names_prefix = "vacc_type_", names_from = vacc_dose_number,
-    values_from = vacc_product_name, values_fill = NA, values_fn = Mode
-  ) %>%
-  rename(
-    date_vacc_1 = first_dose,
-    date_vacc_2 = second_dose,
-    date_vacc_3 = third_dose,
-    date_vacc_4 = fourth_dose,
-    date_vacc_5 = fifth_dose
-  ) %>%
-  mutate(
-    # If someone has e.g. a date_vacc_3, but no record of second dose, assume they got a second dose and set vacc_type_2 to Unknown
-    vacc_type_1 = case_when(
-      is.na(vacc_type_1) & (!is.na(date_vacc_2) | !is.na(date_vacc_3)| !is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
-      TRUE ~ vacc_type_1),
-    vacc_type_2 = case_when(
-      is.na(vacc_type_2) & (!is.na(date_vacc_3) | !is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
-      TRUE ~ vacc_type_2),
-    vacc_type_3 = case_when(  
-      is.na(vacc_type_3) & (!is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
-      TRUE ~ vacc_type_3),
-    vacc_type_4 = case_when( 
-      is.na(vacc_type_4) &!is.na(date_vacc_5) ~ 'Unk',
-      TRUE ~ vacc_type_4)
-  ) %>%
-  data.frame()
-
-# Clean rows with duplicated EAVE_LINKNO
-duplicate_vacc_ids = Vaccinations$EAVE_LINKNO[duplicated(Vaccinations$EAVE_LINKNO)]
-
-duplicate_vaccs = filter(Vaccinations, EAVE_LINKNO %in% duplicate_vacc_ids) %>%
-  group_by(EAVE_LINKNO) %>%
-  mutate_at(setdiff(names(Vaccinations), "EAVE_LINKNO"), Mode) %>%
-  distinct()
-
-Vaccinations = bind_rows(filter(Vaccinations, !(EAVE_LINKNO %in% duplicate_vacc_ids)), duplicate_vaccs)
+  filter(flag_incon == 0) %>%
+  rename(vacc_type_1 = vacc_type) %>%
+  select(-patient_sex, 
+         -age, 
+         -flag_incon, 
+         -flag_incon_date, 
+         -vacc_booster,
+         -vacc_4_booster, 
+         -vacc_5_booster, 
+         -vacc_wb_booster)
+  
+# Vaccinations = Vaccinations %>%
+#   select(EAVE_LINKNO, first_dose, second_dose, third_dose, fourth_dose, fifth_dose,
+#          vacc_dose_number, vacc_product_name
+#   ) %>%
+#   mutate(
+#     vacc_product_name = gsub("Covid-19 Vaccine AstraZeneca", "AZ", vacc_product_name),
+#     vacc_product_name = gsub("Covid-19 mRNA Vaccine Pfizer", "PB", vacc_product_name),
+#     vacc_product_name = gsub("Covid-19 mRNA Vaccine Moderna", "Mo", vacc_product_name),
+#     vacc_product_name = gsub("Covid-19 mRNA Vaccine Spikevax Bivalent Moderna", "Mo", vacc_product_name),
+#     vacc_product_name = gsub("Covid-19 mRNA Vaccine Comirnaty Bivalent Pfizer", "PB", vacc_product_name),
+#     vacc_product_name = gsub("Covid-19 Vaccine Novavax", "No", vacc_product_name)
+#   ) %>%
+#   # 4th and 5th dose Vaccinations with the moderna bivalent vaccine are not currently picked up
+#   mutate(vacc_dose_number = case_when(
+#     !is.na(fifth_dose) & is.na(vacc_dose_number) ~ 5,
+#     !is.na(fourth_dose) & is.na(vacc_dose_number) ~ 4,
+#     TRUE ~ vacc_dose_number
+#   )) %>%
+#   pivot_wider(
+#     id_cols = c(
+#       "EAVE_LINKNO", "first_dose", "second_dose", "third_dose", "fourth_dose", "fifth_dose"
+#     ),
+#     names_prefix = "vacc_type_", names_from = vacc_dose_number,
+#     values_from = vacc_product_name, values_fill = NA, values_fn = Mode
+#   ) %>%
+#   rename(
+#     date_vacc_1 = first_dose,
+#     date_vacc_2 = second_dose,
+#     date_vacc_3 = third_dose,
+#     date_vacc_4 = fourth_dose,
+#     date_vacc_5 = fifth_dose
+#   ) %>%
+#   mutate(
+#     # If someone has e.g. a date_vacc_3, but no record of second dose, assume they got a second dose and set vacc_type_2 to Unknown
+#     vacc_type_1 = case_when(
+#       is.na(vacc_type_1) & (!is.na(date_vacc_2) | !is.na(date_vacc_3)| !is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
+#       TRUE ~ vacc_type_1),
+#     vacc_type_2 = case_when(
+#       is.na(vacc_type_2) & (!is.na(date_vacc_3) | !is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
+#       TRUE ~ vacc_type_2),
+#     vacc_type_3 = case_when(  
+#       is.na(vacc_type_3) & (!is.na(date_vacc_4) | !is.na(date_vacc_5)) ~ 'Unk',
+#       TRUE ~ vacc_type_3),
+#     vacc_type_4 = case_when( 
+#       is.na(vacc_type_4) &!is.na(date_vacc_5) ~ 'Unk',
+#       TRUE ~ vacc_type_4)
+#   ) %>%
+#   data.frame()
+# 
+# # Clean rows with duplicated EAVE_LINKNO
+# duplicate_vacc_ids = Vaccinations$EAVE_LINKNO[duplicated(Vaccinations$EAVE_LINKNO)]
+# 
+# duplicate_vaccs = filter(Vaccinations, EAVE_LINKNO %in% duplicate_vacc_ids) %>%
+#   group_by(EAVE_LINKNO) %>%
+#   mutate_at(setdiff(names(Vaccinations), "EAVE_LINKNO"), Mode) %>%
+#   distinct()
+# 
+# Vaccinations = bind_rows(filter(Vaccinations, !(EAVE_LINKNO %in% duplicate_vacc_ids)), duplicate_vaccs)
 
 
 ## Shielding

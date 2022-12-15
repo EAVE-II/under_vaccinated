@@ -55,7 +55,8 @@ lr_analysis = function(df_cohort, age_group, dep_var, ind_vars) {
   
   model = svyglm(formula, design = survey_design, family = binomial, data = df_cohort)
   
-  saveRDS(model, paste0(dir, "/model.rds"))
+  # This takes up too much space
+  #saveRDS(model, paste0(dir, "/model.rds"))
 
   # Coefficients
   coef = data.frame("variable" = names(coef(model)), "coef" = coef(model), row.names = 1:length(coef(model)))
