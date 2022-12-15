@@ -51,8 +51,7 @@ df_cohort <- EAVE_cohort %>%
 df_cohort$eave_weight[is.na(df_cohort$eave_weight)] <- mean(df_cohort$eave_weight, na.rm = T)
 
 # Add deaths from any cause
-df_cohort <- left_join(df_cohort, all_deaths) %>%
-  mutate(covid_death = replace_na(covid_death, 0))
+df_cohort <- left_join(df_cohort, all_deaths)
 
 # Add risk groups
 df_cohort <- left_join(df_cohort, qcovid_rg, by = "EAVE_LINKNO") %>%
@@ -87,6 +86,14 @@ q_names <- grep("Q", names(df_cohort), value = TRUE)
 
 # Create a list of cols where NA means 0
 cols <- setdiff(q_names, c("Q_BMI", "Q_ETHNICITY"))
+cols <- c("covid_death", cols)
+
+df_cohort <- mutate_at(df_cohort, cols, ~ as.numeric(.))
+
+df_cohort <- mutate_at(df_cohort, cols, ~ case_when(
+  is.na(.) ~ 0,
+  TRUE ~ .
+))
 
 # Add Vaccinations, and vaccine related derived variables
 df_cohort <- left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
@@ -360,7 +367,6 @@ df_cohort <- pos_tests_before_study_start %>%
   ))
 
 rm(tests_before_study_start, pos_tests_before_study_start)
-
 
 
 ## Add endpoints
