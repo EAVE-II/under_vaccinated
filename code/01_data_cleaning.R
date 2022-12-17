@@ -191,7 +191,7 @@ smr <- readRDS(paste0(Location, "EAVE/GPanalysis/data/SMR01_allstays.rds")) %>%
 ## Vaccinations
 source(paste0(Location, "EAVE/GPanalysis/progs/Data_Cleaning/00_Read_DV_Vaccinations_Dose5.R")) 
 
-Vaccinations = Vaccinations %>%
+Vaccinations <- Vaccinations %>%
   filter(flag_incon == 0) %>%
   rename(vacc_type_1 = vacc_type) %>%
   select(-patient_sex, 

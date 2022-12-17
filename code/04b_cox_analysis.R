@@ -65,7 +65,6 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
       dir.create(dir)
     }
     
-    
     df_survival = filter(df_survival, eave_weight == 1)
     
     # Robust standard errors are used by default if weights are not all equal to 1
@@ -352,7 +351,6 @@ endpoint_names = c(
   "covid_mcoa_hosp_death")
 
 
-
 for (dep_var in endpoint_names) {
   print(dep_var)
   
@@ -376,7 +374,7 @@ for (dep_var in endpoint_names) {
         study_start = study_start,
         study_end = study_end,
         exclude_non_unit_weight = exclude_non_unit_weight
-    )
+      )
     }
   }
 }
@@ -398,9 +396,9 @@ for (dep_var in endpoint_names) {
 #   df_survival, individual_id, age_3cat, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
 #   vacc_type_1, vacc_type_2, vacc_type_3, vacc_type_4, vacc_type_5,
 #   num_doses_start, num_doses_recent, vacc_seq_start, vacc_seq_recent,
-#   vs_start, vs_recent, fully_vaccinated, vs_mixed_start,
+#   vs_start, vs_recent, fully_vaccinated, vs_mixed_start, hosp_date, 
 #   covid_death_date, covid_acoa_hosp_date, covid_mcoa_hosp_date,
-#   non_covid_mcoa_hosp_date, covid_mcoa_28_2_hosp_date, covid_mcoa_14_2_hosp, covid_mcoa_hosp_death_date, 
+#   non_covid_mcoa_hosp_date, covid_mcoa_28_2_hosp_date, covid_mcoa_14_2_hosp, covid_mcoa_hosp_death_date,
 #   non_covid_acoa_hosp_date, non_covid_mcoa_28_2_hosp_date,
 #   non_covid_mcoa_14_2_hosp_date, competing_hosp, event, surv_date,
 #   tstart, tstop, duration, num_doses_time

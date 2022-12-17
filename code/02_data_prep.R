@@ -20,7 +20,7 @@ set.seed(1234)
 study_start = as.Date("2022-06-01")
 study_end = as.Date("2022-09-30")
 
-#### Create cohort dataframe with all required variables my merging togehter individual datasets
+#### Create cohort dataframe with all required variables by merging togehter individual datasets
 
 df_cohort <- EAVE_cohort %>%
   #For testing
@@ -85,14 +85,19 @@ df_cohort <- left_join(df_cohort, eave_rg, by = "EAVE_LINKNO")
 q_names <- grep("Q", names(df_cohort), value = TRUE)
 
 # Create a list of cols where NA means 0
-cols <- setdiff(q_names, c("Q_BMI", "Q_ETHNICITY"))
-cols <- c("covid_death", cols)
+cols = c("covid_death", setdiff(q_names, c("Q_BMI", "Q_ETHNICITY")) )
 
-df_cohort <- mutate_at(df_cohort, cols, ~ as.numeric(.))
+df_cohort <- mutate_at(
+  df_cohort, 
+  cols,
+  ~ as.numeric(.))
 
-df_cohort <- mutate_at(df_cohort, cols, ~ case_when(
-  is.na(.) ~ 0,
-  TRUE ~ .
+df_cohort <- mutate_at(
+  df_cohort, 
+  cols, ~ 
+    case_when(
+      is.na(.) ~ 0,
+      TRUE ~ .
 ))
 
 # Add Vaccinations, and vaccine related derived variables
@@ -125,6 +130,7 @@ df_cohort <- left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
   ) %>%
   mutate(
     # Add winter booster dose as numbered vaccine dose
+    # 19 day gap required between doses
     # Vaccine type
     vacc_type_5 = ifelse(is.na(date_vacc_5) & date_vacc_wb > date_vacc_4 + 19, vacc_type_wb, vacc_type_5),
     vacc_type_4 = ifelse(is.na(date_vacc_5) & is.na(date_vacc_4) & date_vacc_wb > date_vacc_3 + 19, vacc_type_wb, vacc_type_4),
@@ -333,7 +339,7 @@ df_cohort <- wgs %>%
   mutate(last_positive_test_group = ifelse(is.na(last_positive_test_group), "never_positive", last_positive_test_group)) %>%
   mutate(
     last_positive_test_group = factor(last_positive_test_group, c("never_positive", "0-13_weeks", "14-26_weeks", "27+_weeks")),
-    last_positive_variant = factor(last_positive_variant, c("never_positive", "not_sequenced", "Alpha", "Delta", "Omicron"))
+    last_positive_variant = factor(last_positive_variant, c("never_positive", "not_sequenced", "Alpha", "Delta", "Omicron", "Other"))
   )
 
 # Add number of PCR tests in last 6 months before study_start
@@ -439,7 +445,7 @@ df_cohort = study_hosps %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
   select(
     EAVE_LINKNO, 
-    hosp_date = hosp_date) %>%
+    hosp_date) %>%
   right_join(df_cohort)
 
 # Add covid deaths
@@ -462,15 +468,15 @@ df_cohort = df_cohort %>%
 
 df_cohort = df_cohort %>%
   mutate(
-    non_covid_mcoa_hosp_date = ifelse(hosp_date < covid_mcoa_hosp_date, hosp_date, as.Date(NA)) %>%
+    non_covid_mcoa_hosp_date = ifelse(hosp_date < covid_mcoa_hosp_date | is.na(covid_mcoa_hosp_date), hosp_date, as.Date(NA)) %>%
       as.Date(origin = "1970-01-01"),
-    non_covid_acoa_hosp_date = ifelse(hosp_date < covid_acoa_hosp_date, hosp_date, as.Date(NA)) %>%
+    non_covid_acoa_hosp_date = ifelse(hosp_date < covid_acoa_hosp_date | is.na(covid_acoa_hosp_date), hosp_date, as.Date(NA)) %>%
       as.Date(origin = "1970-01-01"),
-    non_covid_mcoa_28_2_hosp_date = ifelse(hosp_date < covid_mcoa_28_2_hosp_date, hosp_date, as.Date(NA)) %>%
+    non_covid_mcoa_28_2_hosp_date = ifelse(hosp_date < covid_mcoa_28_2_hosp_date | is.na(covid_mcoa_28_2_hosp_date), hosp_date, as.Date(NA)) %>%
       as.Date(origin = "1970-01-01"),
-    non_covid_mcoa_14_2_hosp_date = ifelse(hosp_date < covid_mcoa_14_2_hosp_date, hosp_date, as.Date(NA)) %>%
+    non_covid_mcoa_14_2_hosp_date = ifelse(hosp_date < covid_mcoa_14_2_hosp_date | is.na(covid_mcoa_14_2_hosp_date), hosp_date, as.Date(NA)) %>%
       as.Date(origin = "1970-01-01"),
-    non_covid_mcoa_hosp_death_date = ifelse(hosp_date < covid_mcoa_hosp_death_date, hosp_date, as.Date(NA)) %>%
+    non_covid_mcoa_hosp_death_date = ifelse(hosp_date < covid_mcoa_hosp_death_date | is.na(covid_mcoa_hosp_death_date), hosp_date, as.Date(NA)) %>%
       as.Date(origin = "1970-01-01")
   )
            
@@ -524,104 +530,112 @@ df_cohort <- rename(df_cohort, individual_id = EAVE_LINKNO)
 # Check NA
 sapply(df_cohort, function(x) sum(is.na(x)))
 
-#### df_cohort has the following columns:
+# Save out
+#saveRDS(df_cohort, './data/df_cohort.rds')
 
-# [1] "individual_id"                  "covid_mcoa_hosp_ever"           "death_date"                     "covid_death"                   
-# [5] "hosp_date"                      "covid_mcoa_14_2_hosp_date"      "covid_mcoa_28_2_hosp_date"      "covid_mcoa_hosp_date"          
-# [9] "covid_acoa_hosp_date"           "num_pos_tests_6m"               "num_tests_6m"                   "specimen_date"                 
-# [13] "last_positive_variant"          "sex"                            "age"                            "urban_rural_6cat"              
-# [17] "simd2020_sc_quintile"           "urban_rural_2cat"               "age_3cat"                       "age_4cat"                      
-# [21] "age_17cat"                      "eave_weight"                    "Q_BMI"                          "Q_ETHNICITY"                   
-# [25] "Q_HOME_CAT"                     "Q_LEARN_CAT"                    "Q_DIAG_CKD_LEVEL"               "Q_DIAG_AF"                     
-# [29] "Q_DIAG_ASTHMA"                  "Q_DIAG_BLOOD_CANCER"            "Q_DIAG_CCF"                     "Q_DIAG_CEREBRALPALSY"          
-# [33] "Q_DIAG_CHD"                     "Q_DIAG_CIRRHOSIS"               "Q_DIAG_CONGEN_HD"               "Q_DIAG_COPD"                   
-# [37] "Q_DIAG_DEMENTIA"                "Q_DIAG_EPILEPSY"                "Q_DIAG_FRACTURE"                "Q_DIAG_HIV_AIDS"               
-# [41] "Q_DIAG_IMMU"                    "Q_DIAG_NEURO"                   "Q_DIAG_PARKINSONS"              "Q_DIAG_PULM_HYPER"             
-# [45] "Q_DIAG_PULM_RARE"               "Q_DIAG_PVD"                     "Q_DIAG_RA_SLE"                  "Q_DIAG_RESP_CANCER"            
-# [49] "Q_DIAG_SEV_MENT_ILL"            "Q_DIAG_SICKLE_CELL"             "Q_DIAG_STROKE"                  "Q_DIAG_VTE"                    
-# [53] "n_risk_gps"                     "Q_DIAG_DIABETES_1"              "Q_DIAG_DIABETES_2"              "bmi_cat"                       
-# [57] "smoking_status"                 "blood_pressure"                 "vacc_type_1"                    "vacc_type_2"                   
-# [61] "date_vacc_1"                    "date_vacc_2"                    "vacc_type_3"                    "date_vacc_3"                   
-# [65] "vacc_type_4"                    "date_vacc_4"                    "vacc_type_5"                    "date_vacc_5"                   
-# [69] "vacc_type_wb"                   "date_vacc_wb"                   "num_doses_recent"               "num_doses_start"               
-# [73] "vacc_seq_recent"                "vacc_seq_start"                 "mixed_vacc_recent"              "mixed_vacc_start"              
-# [77] "vs_recent"                      "vs_start"                       "fully_vaccinated"               "vs_mixed_start"                
-# [81] "vs_mixed_recent"                "mean_household_age"             "num_ppl_household"              "shielding"                     
-# [85] "last_positive_test"             "last_positive_test_group"       "num_tests_6m_group"             "covid_acoa_hosp"               
-# [89] "covid_mcoa_hosp"                "covid_mcoa_28_2_hosp"           "covid_mcoa_14_2_hosp"           "covid_death_date"              
-# [93] "covid_mcoa_hosp_death"          "covid_mcoa_hosp_death_date"     "non_covid_mcoa_hosp_date"       "non_covid_acoa_hosp_date"      
-# [97] "non_covid_mcoa_28_2_hosp_date"  "non_covid_mcoa_14_2_hosp_date"  "non_covid_mcoa_hosp_death_date"
-
-
-
-#### df_cohort column types:
+#### df_cohort column descriptions:
 
 # $individual_id
 # [1] "character"
+# it's what you think it is
 # 
 # $covid_mcoa_hosp_ever
 # [1] "numeric"
+# whether they have had a covid hospitalisation with covid as main cause of admission at any time before study_start
 # 
 # $death_date
 # [1] "Date"
 # 
 # $covid_death
 # [1] "numeric"
+# whether or not they had a death with covid as any cause of death on death certificate
 # 
 # $hosp_date
 # [1] "Date"
+# date of their first, any-cause hospitalisation in the study period
 # 
 # $covid_mcoa_14_2_hosp_date
 # [1] "Date"
+# date of first hospitalisation with covid as main cause of admission and with a positive PCR test in the 14 days before admission or 2 days after
 # 
 # $covid_mcoa_28_2_hosp_date
 # [1] "Date"
+# date of first hospitalisation with covid as main cause of admission and with a positive PCR test in the 28 days before admission or 2 days after
 # 
 # $covid_mcoa_hosp_date
 # [1] "Date"
+# date of first hospitalisation that has covid as the main cause of admission
 # 
 # $covid_acoa_hosp_date
 # [1] "Date"
+# date of first hospitalisation with covid as any cause of admission
 # 
 # $num_pos_tests_6m
 # [1] "factor"
+# number of positive tests they have had in the last 6 months before study_start
+# Levels are: 0, 1, 2+
 # 
 # $num_tests_6m
 # [1] "integer"
+# number of tests they have had in the last 6 months before study_start
 # 
 # $specimen_date
 # [1] "Date"
+# specimen date of last positive test
 # 
 # $last_positive_variant
 # [1] "factor"
 # 
 # $sex
 # [1] "factor"
+# Levels are Female and Male
 # 
 # $age
 # [1] "numeric"
 # 
 # $urban_rural_6cat
 # [1] "factor"
+# Levels are:
+# Large Urban Areas
+# Other Urban Areas
+# Accessible Small Towns
+# Remote Small Towns
+# Accessible Rural
+# Remote Rural
 # 
 # $simd2020_sc_quintile
 # [1] "factor"
+# quintile of the Scottish index of multiple deprivation
+# 1 is the most deprived, 5 is the most affluent
 # 
 # $urban_rural_2cat
 # [1] "character"
+# Levels are:
+# Urban, Rural
 # 
 # $age_3cat
 # [1] "factor"
+# Levels are:
+# 5-17, 18-74, 75+
 # 
 # $age_4cat
 # [1] "factor"
+# Levels are:
+# 5-11, 12-15, 16-74, 75+
 # 
 # $age_17cat
 # [1] "factor"
+# Levels are:
+# 5-11, 12-15, 16-17, 18-24, 25-29, 30-34, 35-39, 40-44, 
+# 45-49, 50-54, 55-59, 60-64, 65-69, 70-74, 75-79, 80-84, 85+
 # 
 # $eave_weight
 # [1] "numeric"
+# their weighting
 # 
+
+###### variables starting with Q are qcovid categories
+
 # $Q_BMI
 # [1] "numeric"
 # 
@@ -711,9 +725,12 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # 
 # $Q_DIAG_VTE
 # [1] "numeric"
-# 
+
+######
+
 # $n_risk_gps
 # [1] "factor"
+# count of qcovid risk groups
 # 
 # $Q_DIAG_DIABETES_1
 # [1] "numeric"
@@ -723,13 +740,24 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # 
 # $bmi_cat
 # [1] "factor"
+# body mass index cateogry, and Levels are:
+# 10-18.5, 18.5-25, 25-30, 30-35, 35-40, 40+
 # 
 # $smoking_status
 # [1] "factor"
+# Levels are:
+# Ex-smoker, Non-smoker, Smoker
 # 
 # $blood_pressure
 # [1] "factor"
+# Levels are:
+# Normal, Low, High, Very high
 # 
+
+###### date_vacc_x is the date of dose number x
+###### vacc_type_x is the type of dose number x
+###### wb stands for winter booster
+
 # $vacc_type_1
 # [1] "character"
 # 
@@ -765,227 +793,135 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # 
 # $date_vacc_wb
 # [1] "Date"
-# 
+
+######
+
 # $num_doses_recent
 # [1] "numeric"
+# number of vaccine doses they have had according to most recent data
 # 
 # $num_doses_start
 # [1] "numeric"
+# number of doses they had at study_start
 # 
 # $vacc_seq_recent
 # [1] "character"
+# sequence of vaccine types they have received according to most recent data
 # 
 # $vacc_seq_start
 # [1] "character"
+# sequence of vaccine types they had received at study_start
 # 
 # $mixed_vacc_recent
 # [1] "numeric"
+# whether they have had any mixed vaccine type according to most recent data
 # 
 # $mixed_vacc_start
 # [1] "numeric"
+# whether they have had any mixed vaccine type at study start
 # 
 # $vs_recent
 # [1] "character"
+# dose number and type of the last dose they had according to most recent data
 # 
 # $vs_start
 # [1] "character"
+# dose number and type of the last dose they had at study_start
 # 
 # $fully_vaccinated
 # [1] "factor"
+# whether they have had the recommended
+# vaccine schedule for their age group at study_start
 # 
 # $vs_mixed_start
 # [1] "character"
+# a more coarse_grained version of vacc_seq_start, with categories of vaccine sequences
+# received by study_start. Details are in the draft tables document.
 # 
 # $vs_mixed_recent
 # [1] "character"
+# a more coarse_grained version of vacc_seq_start, with categories of vaccine sequences
+# received according to most recent data. Details are in the draft tables document.
 # 
 # $mean_household_age
 # [1] "numeric"
 # 
 # $num_ppl_household
 # [1] "factor"
+# number of people in household
+# Levels are:
+# 1, 2, 3-5, 6-10, 11-30, 31-100, 101+
 # 
 # $shielding
 # [1] "numeric"
+# whether they have ever been on the shielding list
 # 
 # $last_positive_test
 # [1] "numeric"
+# date of last positive test before study_start
 # 
 # $last_positive_test_group
 # [1] "factor"
+# Levels are:
+# never_positive, 0-13_weeks, 14-26_weeks, 27+_weeks
 # 
+# last_positive_test_variant
+# Levels are:
+# never_positive, not_sequenced, Alpha, Delta, Omicron, Other
+#
 # $num_tests_6m_group
 # [1] "factor"
+# Levels are:
+# 0, 1, 2, 3, 4-9, 10+
 # 
 # $covid_acoa_hosp
 # [1] "numeric"
+# whether they had a hospitalisation with covid as any cause of admission
 # 
 # $covid_mcoa_hosp
 # [1] "numeric"
+# whether they had a hospitalisation with covid as main cause of admission
 # 
 # $covid_mcoa_28_2_hosp
 # [1] "numeric"
+# whether they had a hospitalisation with covid as main cause of admission,
+# and a positive PCR test in the 28 days prior to admission or 2 days after admission
 # 
 # $covid_mcoa_14_2_hosp
 # [1] "numeric"
+# whether they had a hospitalisation with covid as main cause of admission,
+# and a positive PCR test in the 28 days prior to admission or 2 days after admission
 # 
 # $covid_death_date
 # [1] "Date"
 # 
 # $covid_mcoa_hosp_death
 # [1] "numeric"
+# whether they had a hospitalisation with covid as main cause of admission
+# or a covid death
 # 
 # $covid_mcoa_hosp_death_date
 # [1] "Date"
+# date of first hospitalisation with covid as main cause of admission
+# or covid death
 # 
 # $non_covid_mcoa_hosp_date
 # [1] "Date"
+# date of first hospitalisation that is not a covid_mcoa_hosp
 # 
 # $non_covid_acoa_hosp_date
 # [1] "Date"
+# date of first hospitalisation that is not a covid_acoa_hosp
 # 
 # $non_covid_mcoa_28_2_hosp_date
 # [1] "Date"
+# date of first hospitalisation that is not a covid_28_2_mcoa_hosp
 # 
 # $non_covid_mcoa_14_2_hosp_date
 # [1] "Date"
+# date of first hospitalisation that is not a covid_14_2_mcoa_hosp
 # 
 # $non_covid_mcoa_hosp_death_date
 # [1] "Date"
+# date of first hospitalisation that is not a covid_mcoa_hosp_death
 
-
-
-#### df_cohort variable descriptions
-
-# individual_id is what you think it is
-
-# covid_mcoa_hosp_ever is binary - whether they have had a covid hospitalisation with covid as main
-# cause of admission at any time before study_start
-
-# death_date is what you think it is
-
-# covid_death is binary - whether or not they had a death with covid as any cause of death on death
-# certificate
-
-# hosp_date is the date of their first, any-cause hospitalisation in the study period
-
-# covid_mcoa_14_2_hosp_date is date of first hospitalisation with covid as main cause of admission
-# and with a positive PCR test in the 14 days before admission or 2 days after
-
-# covid_mcoa_28_2_hosp_date is date of first hospitalisation with covid as main cause of admission
-# and with a positive PCR test in the 28 days before admission or 2 days after
-
-# covid_mcoa_hosp_date is date of first hospitalisation with covid as main cause of admission
-
-# covid_acoa_hosp_date is date of first hospitalisation with covid as any cause of admission
-
-# num_pos_tests_6m is the number of positive tests they have had in the last 6 months before study_start
-# Its levels are: 0, 1, 2+
-
-# num_tests_6m is integer - number of tests they have had in the last 6 months before study_start
-
-# specimen_date is specimen date of last positive test
-
-# sex is what you think. Levels are Female and Male
-
-# age is what you think
-
-# simd2020_sc_quintile is their quintile of the Scottish index of multiple deprivation
-# 1 is the most deprived, 5 is the most affluent
-
-# urban_rural_6cat has the following levels:
-# Large Urban Areas
-# Other Urban Areas
-# Accessible Small Towns
-# Remote Small Towns
-# Accessible Rural
-# Remote Rural
-
-# urban_rural_2cat has the following levels:
-# Urban, Rural
-
-# age_3cat has the following levels:
-# 5-17, 18-74, 75+
-
-# age_4cat has the following levels:
-# 5-11, 12-15, 16-74, 75+
-
-# age_17cat has the following levels:
-# 5-11, 12-15, 16-17, 18-24, 25-29, 30-34, 35-39, 40-44, 
-# 45-49, 50-54, 55-59, 60-64, 65-69, 70-74, 75-79, 80-84, 85+
-
-# eave_weight is their weighting
-
-# Variables that start with Q are QCovid risk groups
-
-# bmi_cat is their body mass index cateogry, and has the following levels:
-# 10-18.5, 18.5-25, 25-30, 30-35, 35-40, 40+
-
-# Smoking status is what you think it is, and has the following levels:
-# Ex-smoker, Non-smoker, Smoker
-
-# blood pressure is what you think it is, and has the following levels:
-# Normal, Low, High, Very high
-
-# date_vacc_x is the date of dose number x
-
-# vacc_type_x is the type of dose number x
-              
-# num_doses_recent is the number of vaccine doses they have had according to most recent data
-# num_doses_start is the number of doses they had at study_start
-
-# vacc_seq_recent is the sequence of vaccine types they have received according to most recent data
-# vacc_seq_start is the sequence of vaccine types they had received at study_start
-
-# mixed_vacc_start is a binary variable indicating whether they have had any mixed vaccine type at study start
-# mixed_vacc_recent is a binary variable indicating whether they have had any mixed vaccine type according to most recent data
-
-# vs_recent is the dose number and type of the last dose they had according to most recent data
-# vs_start is the dose number and type of the last dose they had at study_start
-
-# fully_vaccinated is a binary variable indicating whether they have had the recommended
-# vaccine schedule for their age group at study_start
- 
-# vs_mixed_start is a more coarse_grained version of vacc_seq_start, with categories of vaccine sequences
-# detailed in the draft tables document
-# vs_mixed_recent is similar but for vacc_seq_recent
-
-# mean_household_age is what you think it is
-
-# num_ppl_household is number of people in household, and has the following levels:
-# 1, 2, 3-5, 6-10, 11-30, 31-100, 101+
-
-
-# shielding is whether they have ever been on the shielding list
-
-# last_positive _test is date of last positive test before study_start
-
-# last_positive_test_group has the following levels:
-# never_positive, 0-13_weeks, 14-26_weeks, 27+_weeks
-
-# last_positive_test_variant has the following levels:
-# Alpha, Delta, Omicron, Other
-
-# num_tests_6m_group has the following levels:
-# 0, 1, 2, 3, 4-9, 10+
-
-# covid_acoa_hosp is whether they had a hospitalisation with covid as any cause of admission
-# covid_mcoa_hosp is whether they had a hospitalisation with covid as main cause of admission
-
-# covid_mcoa_28_2_hosp is whether they had a hospitalisation with covid as main cause of admission,
-# and a positive PCR test in the 28 days prior to admission or 2 days after admission
-
-# covid_mcoa_14_2_hosp is whether they had a hospitalisation with covid as main cause of admission,
-# and a positive PCR test in the 28 days prior to admission or 2 days after admission
-
-# non_covid_mcoa_hosp_date is date of first hospitalisation that is not a covid_mcoa_hosp
-# non_covid_acoa_hosp_date is date of first hospitalisation that is not a covid_acoa_hosp
-# non_covid_mcoa_28_2_hosp_date is date of first hospitalisation that is not a covid_28_2_mcoa_hosp
-# non_covid_mcoa_14_2_hosp_date is date of first hospitalisation that is not a covid_14_2_mcoa_hosp
-# non_covid_mcoa_hosp_death_date is date of first hospitalisation that is not a covid_mcoa_hosp_death
-
-# covid_mcoa_hosp_death is whether they had a hospitalisation with covid as main cause of admission
-# or a covid death
-
-# covid_mcoa_hosp_death_date is first date of hospitalisation with covid as main cause of admission
-# or covid death
