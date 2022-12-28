@@ -19,6 +19,9 @@ setwd("/conf/EAVE/GPanalysis/analyses/under_vaccinated")
 #source("./code/01_data_cleaning.R")
 #source("./code/02_data_prep.R")
 
+# Read in
+#df_cohort = readRDS('./data/df_cohort.rds')
+
 # Create output directory
 output_dir = "./output/"
 if (!dir.exists(output_dir)) {

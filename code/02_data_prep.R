@@ -98,7 +98,7 @@ df_cohort <- mutate_at(
     case_when(
       is.na(.) ~ 0,
       TRUE ~ .
-))
+  ))
 
 # Add Vaccinations, and vaccine related derived variables
 df_cohort <- left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
@@ -725,9 +725,7 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # 
 # $Q_DIAG_VTE
 # [1] "numeric"
-
-######
-
+#
 # $n_risk_gps
 # [1] "factor"
 # count of qcovid risk groups
@@ -738,9 +736,11 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # $Q_DIAG_DIABETES_2
 # [1] "numeric"
 # 
+####
+
 # $bmi_cat
 # [1] "factor"
-# body mass index cateogry, and Levels are:
+# body mass index category, and Levels are:
 # 10-18.5, 18.5-25, 25-30, 30-35, 35-40, 40+
 # 
 # $smoking_status

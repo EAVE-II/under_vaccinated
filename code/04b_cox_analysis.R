@@ -19,6 +19,9 @@ output_dir = "./output/"
 # The only thing needed from 02_cohort_description is names_map
 # source('./output/02_cohort_description.R')
 
+# Read in
+df_cohort = readRDS('./data/df_cohort.rds')
+
 # Add more entries to names_map to automatically generate display names
 names_map["last_positive_test_group"] = "Last positive test"
 names_map["num_tests_6m_group"] = "Number of tests in last 6 months"
@@ -67,7 +70,6 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     
     df_survival = filter(df_survival, eave_weight == 1)
     
-    # Robust standard errors are used by default if weights are not all equal to 1
     model = coxph(formula, data = df_survival)
     
     # This takes up too much space
@@ -265,23 +267,30 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
   for (var in ind_vars) {
     formula = as.formula(paste0("Surv(duration, event) ~ ", var))
 
+    new_df = pyears(formula,
+           data = df_survival,
+           scale = 1,
+           data.frame = TRUE
+    )$data %>%
+      mutate(Variable = var) %>%
+      rename(Levels = !!sym(var)) %>%
+      mutate(
+        Levels = as.character(Levels),
+        HR = case_when(
+          Levels == as.character(levels(as.factor(pull(df_survival, !!sym(var))))[1]) ~ "Ref",
+          TRUE ~ NA_character_
+        )
+      )
+    
+    # For binary variables, only keep 1 row
+    if (length(setdiff(new_df$Levels, c(0,1))) == 0){
+      new_df = filter(new_df, Levels == 1) %>%
+        mutate(Levels = '')
+    }
+    
     person_years = bind_rows(
       person_years,
-      pyears(formula,
-        data = df_survival,
-        scale = 1,
-        data.frame = TRUE
-      )$data %>%
-        mutate(Variable = var) %>%
-        rename(Levels = !!sym(var)) %>%
-        mutate(
-          Levels = as.character(Levels),
-          HR = case_when(
-            Levels == as.character(levels(as.factor(pull(df_survival, !!sym(var))))[1]) ~ "Ref",
-            TRUE ~ NA_character_
-          )
-        )
-    )
+      new_df)
   }
 
   person_years =
@@ -396,7 +405,7 @@ for (dep_var in endpoint_names) {
 #   df_survival, individual_id, age_3cat, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
 #   vacc_type_1, vacc_type_2, vacc_type_3, vacc_type_4, vacc_type_5,
 #   num_doses_start, num_doses_recent, vacc_seq_start, vacc_seq_recent,
-#   vs_start, vs_recent, fully_vaccinated, vs_mixed_start, hosp_date, 
+#   vs_start, vs_recent, fully_vaccinated, vs_mixed_start, hosp_date,
 #   covid_death_date, covid_acoa_hosp_date, covid_mcoa_hosp_date,
 #   non_covid_mcoa_hosp_date, covid_mcoa_28_2_hosp_date, covid_mcoa_14_2_hosp, covid_mcoa_hosp_death_date,
 #   non_covid_acoa_hosp_date, non_covid_mcoa_28_2_hosp_date,

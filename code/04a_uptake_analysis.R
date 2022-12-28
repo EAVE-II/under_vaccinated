@@ -20,6 +20,9 @@ output_dir = "./output/"
 # The only thing needed from 02_cohort_description is names_map
 #source('./output/02_cohort_description.R')
 
+# Read in
+#df_cohort = readRDS('./data/df_cohort.rds')
+
 # Add more entries to names_map to automatically generate display names
 names_map["last_positive_test_group"] = "Last positive test"
 names_map["num_tests_6m_group"] = "Number of tests in last 6 months"
