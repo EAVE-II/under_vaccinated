@@ -44,7 +44,8 @@ lr_analysis = function(df_cohort, age_group, dep_var, ind_vars) {
   }
 
   df_cohort = filter(
-    df_cohort, 
+    df_cohort,
+      flag_incon == 0,
       age_4cat == age_group,
       is.na(death_date) | death_date > study_start) %>%
     droplevels()
@@ -58,9 +59,6 @@ lr_analysis = function(df_cohort, age_group, dep_var, ind_vars) {
   
   model = svyglm(formula, design = survey_design, family = binomial, data = df_cohort)
   
-  # This takes up too much space
-  #saveRDS(model, paste0(dir, "/model.rds"))
-
   # Coefficients
   coef = data.frame("variable" = names(coef(model)), "coef" = coef(model), row.names = 1:length(coef(model)))
   write.csv(coef, paste0(dir, "/coef.csv"), row.names = FALSE)
@@ -82,8 +80,6 @@ create_logistic_results_table = function(df_cohort, model, dep_var, ind_vars) {
     
     Levels = as.character(levels( as.factor(pull(df_cohort, !!sym(var)))))
     
-    #Levels = unique(pull(df_cohort, !!sym(var)))
-    
     new_df = data.frame(Variable = var, Levels) %>%
       mutate(
         OR = case_when( Levels == as.character(levels( as.factor(pull(df_cohort, !!sym(var))))[1])  ~ 'Ref',
@@ -98,10 +94,6 @@ create_logistic_results_table = function(df_cohort, model, dep_var, ind_vars) {
       right_join(new_df, by = 'Levels')
 
     df_vars = bind_rows(df_vars, new_df)
-    
-    # df_vars = mutate(df_vars,
-    #   OR = case_when( Levels == as.character(levels( as.factor(pull(df_cohort, !!sym(var))))[1])  ~ 'Ref',
-    #                 TRUE ~ NA_character_) )
   }
   
   df_vars = mutate(
@@ -125,7 +117,6 @@ create_logistic_results_table = function(df_cohort, model, dep_var, ind_vars) {
   results = left_join(df_vars, results, by = 'term') %>%
     mutate(
       OR = coalesce(OR.x, OR.y),
-      #OR = replace_na(OR, "Ref"),
       Variable = names_map[Variable] ,
       Variable = case_when(
         !duplicated(Variable) ~ Variable,
@@ -166,7 +157,7 @@ nb_analysis = function(df_cohort, age_group, dep_var, ind_vars) {
 
 ## Logistic regression
 lr_dep_var = "fully_vaccinated"
-lr_ind_vars = c("sex", "age_17cat", "urban_rural_2cat", "simd2020_sc_quintile", "n_risk_gps")
+lr_ind_vars = c("sex", "age_17cat", "ethnicity_5cat", "urban_rural_2cat", "simd2020_sc_quintile", "n_risk_gps")
 
 # age_17cat only has one category for 5-11 year olds and 12-15 year olds
 # - drop it as a predictor
@@ -179,7 +170,7 @@ lr_analysis(df_cohort, "75+", lr_dep_var, lr_ind_vars)
 ## Naive bayes model
 # ENGLAND NORTHERN IRELAND AND WALES DON'T HAVE TO DO THE NAIVE BAYES ESIMATION
 nb_dep_var = "fully_vaccinated"
-nb_ind_vars = c("sex", "urban_rural_2cat", "simd2020_sc_quintile", "n_risk_gps", "age")
+nb_ind_vars = c("sex", "ethnicity_5cat", "urban_rural_2cat", "simd2020_sc_quintile", "n_risk_gps", "age")
 
 nb_analysis(df_cohort, "5-11", nb_dep_var, nb_ind_vars)
 nb_analysis(df_cohort, "12-15", nb_dep_var, nb_ind_vars)

@@ -37,12 +37,17 @@ names_map['competing_hosp'] = "Competing non-COVID-19 hospitalisation"
 # Saves table of person years, cumulative incidence curve, fits cox model and
 # saves results table, coefficients and covariance matrix
 cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, study_start, study_end, exclude_non_unit_weight) {
-
+  
   # Hospitalisation or death
   dir = paste0(output_dir, "cox_", dep_var, "_", age_group)
+  
+  # Remove inconsistent vaccination records
+  df_cohort = filter(df_cohort, flag_incon == 0)
 
+  if (age_group != 'all'){
   df_cohort = filter(df_cohort, age_3cat == age_group) %>%
     droplevels()
+  }
 
   df_survival = create_df_survival(df_cohort, dep_var, calendar_days = calendar_days, study_start = study_start, study_end = study_end)
 
@@ -71,14 +76,6 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     df_survival = filter(df_survival, eave_weight == 1)
     
     model = coxph(formula, data = df_survival)
-    
-    # This takes up too much space
-    # tryCatch({
-    #   saveRDS(model, paste0(dir, "/model.rds"))
-    # }, 
-    # error = function(e){cat("ERROR :",conditionMessage(e), "\n")}
-    # )
-    
   } else {
     
     if (!dir.exists(dir)) {
@@ -101,13 +98,6 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     
     # Robust standard errors are used by default if weights are not all equal to 1
     model = coxph(formula, data = df_survival, weights = eave_weight)
-    
-    # This takes up too much space
-    # tryCatch({
-    #   saveRDS(model, paste0(dir, "/model.rds"))
-    # }, 
-    # error= function(e){cat("ERROR :",conditionMessage(e), "\n")}
-    # )
   }
   
   # Results table
@@ -363,7 +353,7 @@ endpoint_names = c(
 for (dep_var in endpoint_names) {
   print(dep_var)
   
-  for (age_group in c("5-17", "18-74", "75+")) {
+  for (age_group in c("5-17", "18-74", "75+", "all")) {
     print(age_group)
     
     for (exclude_non_unit_weight in c(TRUE, FALSE)){
@@ -390,7 +380,7 @@ for (dep_var in endpoint_names) {
 
 
 #### Tests
-#
+
 # df_cohort_test = df_cohort %>%
 #   filter(age_3cat == "18-74")
 # df_cohort_test = filter(df_cohort_test, individual_id %in% sample(df_cohort_test$individual_id, 100000)) %>%
@@ -400,7 +390,7 @@ for (dep_var in endpoint_names) {
 #   event_col = "covid_mcoa_hosp", calendar_days = 0, study_start = study_start, study_end = study_end
 # )
 # 
-# # # Check everything is ok - verify that bob is indeed one's uncle
+# # Check everything is ok - verify that bob is indeed one's uncle
 # bob = select(
 #   df_survival, individual_id, age_3cat, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
 #   vacc_type_1, vacc_type_2, vacc_type_3, vacc_type_4, vacc_type_5,
@@ -416,16 +406,16 @@ for (dep_var in endpoint_names) {
 # # Weighted Cox model
 # formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(cox_ind_vars, collapse = " + ")))
 # 
-# # survey_design = svydesign(
-# #   id = ~1,
-# #   weights = ~eave_weight,
-# #   data = df_survival
-# # )
-# #
-# # model = svycoxph(formula,
-# #   design = survey_design,
-# #   data = df_survival
-# # )
+# survey_design = svydesign(
+#   id = ~1,
+#   weights = ~eave_weight,
+#   data = df_survival
+# )
+# 
+# model = svycoxph(formula,
+#   design = survey_design,
+#   data = df_survival
+# )
 # 
 # df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
 # 

@@ -50,6 +50,9 @@ df_cohort <- EAVE_cohort %>%
 
 df_cohort$eave_weight[is.na(df_cohort$eave_weight)] <- mean(df_cohort$eave_weight, na.rm = T)
 
+# Add ethnicitiy
+df_cohort <- left_join(df_cohort, ethnicity)
+
 # Add deaths from any cause
 df_cohort <- left_join(df_cohort, all_deaths)
 
@@ -68,24 +71,26 @@ df_cohort <- left_join(df_cohort, qcovid_rg, by = "EAVE_LINKNO") %>%
     Q_HOME_CAT = ifelse(is.na(Q_HOME_CAT), "Neither", Q_HOME_CAT) %>%
       factor() %>%
       fct_relevel("Neither"),
-    Q_LEARN_CAT = ifelse(is.na(Q_LEARN_CAT), "Neither", Q_HOME_CAT) %>%
+    Q_LEARN_CAT = ifelse(is.na(Q_LEARN_CAT), "Neither", Q_LEARN_CAT) %>%
       factor() %>%
       fct_relevel("Neither"),
     Q_DIAG_CKD_LEVEL = ifelse(is.na(Q_DIAG_CKD_LEVEL), "No CKD", Q_DIAG_CKD_LEVEL) %>%
       factor() %>%
       fct_relevel("No CKD")
-  ) %>%
+  ) %>%  
   mutate(
     n_risk_gps = as.character(n_risk_gps) %>%
-       replace_na('0') %>%
-      factor()) 
-  
+      replace_na("0") %>%
+      factor()
+  )
+
 df_cohort <- left_join(df_cohort, eave_rg, by = "EAVE_LINKNO")
 
 q_names <- grep("Q", names(df_cohort), value = TRUE)
 
+
 # Create a list of cols where NA means 0
-cols = c("covid_death", setdiff(q_names, c("Q_BMI", "Q_ETHNICITY")) )
+cols = c("covid_death", setdiff(q_names, c("Q_BMI", "Q_ETHNICITY", "Q_HOME_CAT", "Q_LEARN_CAT", "Q_DIAG_CKD_LEVEL")) )
 
 df_cohort <- mutate_at(
   df_cohort, 
@@ -98,7 +103,7 @@ df_cohort <- mutate_at(
     case_when(
       is.na(.) ~ 0,
       TRUE ~ .
-  ))
+    ))
 
 # Add Vaccinations, and vaccine related derived variables
 df_cohort <- left_join(df_cohort, Vaccinations, by = "EAVE_LINKNO") %>%
@@ -304,6 +309,7 @@ df_cohort <- left_join(df_cohort, ever_shielding) %>%
   mutate(shielding = replace_na(shielding, 0))
 
 # Add in time since last positive test and variant of last positive test
+# Community testing stopped on 18th March, which could affect variant recording
 df_cohort <- wgs %>%
   rename(
     last_positive_variant = lineage
@@ -349,7 +355,7 @@ pos_tests_before_study_start = filter(tests_before_study_start, test_result == "
 df_cohort <- tests_before_study_start %>%
   count(EAVE_LINKNO) %>%
   rename(num_tests_6m = n) %>%
-  select(EAVE_LINKNO, num_tests_6m) %>%
+  dplyr::select(EAVE_LINKNO, num_tests_6m) %>%
   right_join(df_cohort) %>%
   mutate(num_tests_6m = replace_na(num_tests_6m, 0)) %>%
   mutate(num_tests_6m_group = cut(num_tests_6m,
@@ -363,7 +369,7 @@ df_cohort <- tests_before_study_start %>%
 df_cohort <- pos_tests_before_study_start %>%
   count(EAVE_LINKNO) %>%
   rename(num_pos_tests_6m = n) %>%
-  select(EAVE_LINKNO, num_pos_tests_6m) %>%
+  dplyr::select(EAVE_LINKNO, num_pos_tests_6m) %>%
   right_join(df_cohort) %>%
   mutate(num_pos_tests_6m = replace_na(num_pos_tests_6m, 0)) %>%
   mutate(num_pos_tests_6m = cut(num_pos_tests_6m,
@@ -385,11 +391,11 @@ study_covid_acoa_hosps = filter(study_hosps, covid_main_diag_admit == 1 | covid_
 # mcoa = main cause of admission
 study_covid_mcoa_hosps = filter(study_covid_acoa_hosps, covid_main_diag_admit == 1)
 
-# Add covid hospitalistions with covid as main cause of admission
+# Add covid hospitalistions with covid as any cause of admission
 df_cohort = study_covid_acoa_hosps %>%
   arrange(EAVE_LINKNO, hosp_date) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO, 
     covid_acoa_hosp_date = hosp_date) %>%
   right_join(df_cohort) %>%
@@ -401,7 +407,7 @@ df_cohort = study_covid_acoa_hosps %>%
 df_cohort = study_covid_mcoa_hosps %>%
   arrange(EAVE_LINKNO, hosp_date) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO, 
     covid_mcoa_hosp_date = hosp_date) %>%
   right_join(df_cohort) %>%
@@ -417,7 +423,7 @@ df_cohort = study_covid_mcoa_hosps %>%
   filter(specimen_to_hosp <= 28 & specimen_to_hosp >= -2) %>%
   arrange(EAVE_LINKNO, hosp_date) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO, 
     covid_mcoa_28_2_hosp_date = hosp_date) %>%
   right_join(df_cohort) %>%
@@ -432,7 +438,7 @@ df_cohort = study_covid_mcoa_hosps %>%
   filter(specimen_to_hosp <= 14 & specimen_to_hosp >= -2) %>%
   arrange(EAVE_LINKNO, hosp_date) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO, 
     covid_mcoa_14_2_hosp_date = hosp_date) %>%
   right_join(df_cohort) %>%
@@ -443,7 +449,7 @@ df_cohort = study_covid_mcoa_hosps %>%
 df_cohort = study_hosps %>% 
   arrange(EAVE_LINKNO, hosp_date) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO, 
     hosp_date) %>%
   right_join(df_cohort)
@@ -466,6 +472,7 @@ df_cohort = df_cohort %>%
       as.Date(origin = "1970-01-01")
   ) 
 
+# Add competing non-COVID hospitalistions
 df_cohort = df_cohort %>%
   mutate(
     non_covid_mcoa_hosp_date = ifelse(hosp_date < covid_mcoa_hosp_date | is.na(covid_mcoa_hosp_date), hosp_date, as.Date(NA)) %>%
@@ -483,7 +490,7 @@ df_cohort = df_cohort %>%
 # Add previous covid hospitalisation
 df_cohort = filter(smr, covid_main_diag_admit == 1, hosp_date < study_start) %>%
   mutate(covid_mcoa_hosp_ever = 1) %>%
-  select(EAVE_LINKNO, covid_mcoa_hosp_ever) %>%
+  dplyr::select(EAVE_LINKNO, covid_mcoa_hosp_ever) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
   right_join(df_cohort) %>%
   mutate(covid_mcoa_hosp_ever = replace_na(covid_mcoa_hosp_ever, 0))
@@ -531,7 +538,7 @@ df_cohort <- rename(df_cohort, individual_id = EAVE_LINKNO)
 sapply(df_cohort, function(x) sum(is.na(x)))
 
 # Save out
-#saveRDS(df_cohort, './data/df_cohort.rds')
+saveRDS(df_cohort, './data/df_cohort.rds')
 
 #### df_cohort column descriptions:
 
@@ -633,6 +640,14 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 # [1] "numeric"
 # their weighting
 # 
+# $ethnicity_18cat
+# [1] "factor"
+# 
+# $ethnicity_5cat
+# [1] "factor"
+# Levels are:
+# White, Black, Asian, Mixed, Other
+
 
 ###### variables starting with Q are qcovid categories
 
@@ -728,7 +743,8 @@ sapply(df_cohort, function(x) sum(is.na(x)))
 #
 # $n_risk_gps
 # [1] "factor"
-# count of qcovid risk groups
+# count of qcovid clinical risk groups. This does not include BMI, ethnicity,
+# learning disability or housing category.
 # 
 # $Q_DIAG_DIABETES_1
 # [1] "numeric"

@@ -24,8 +24,18 @@ Mode = function(x) {
 }
 
 ## Demographics
+
+# Non-residents list
+non_residents <- readRDS(paste0( Location, "EAVE/GPanalysis/data/not_resident_list.rds"))
+
+# Correct mismatches in chi numbers
+EAVE_LINKNO_refresh <- readRDS(paste0(Location, "EAVE/GPanalysis/data/EAVE_LINKNO_refresh.rds")) %>%
+  filter(EAVE_LINKNO_change == 1)
+
+#KIRSTY: I use the demographic data from: "/conf/EAVE/GPanalysis/data/EAVE_demographics_SK.rds" which one is the correct one?
 EAVE_cohort <- readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort_Demog_Endpoints_Dates2021-07-28.rds")) %>%
-  select(
+  filter(!EAVE_LINKNO %in% non_residents$EAVE_LINKNO) %>%
+  dplyr::select(
     EAVE_LINKNO,
     sex = Sex,
     age = ageYear,
@@ -60,10 +70,14 @@ EAVE_cohort <- readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort_Dem
   # Original extract was in 2020 - add 2 to age
   mutate(age = age + 2)
 
+# These weights are based on age groups and sex. Individuals are re-weighted so that
+# the total weight in each age/sex category equals the census estimates
 EAVE_Weights <- readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/CR_Cohort_Weights.rds"))
 
 # Household information
 household <- readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort_Household.rds")) %>%
+  # There are some people with zero or low average household age
+  # Not clear why
   rename(mean_household_age = ave_hh_age) %>%
   mutate(
     num_ppl_household = cut(
@@ -75,7 +89,7 @@ household <- readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort_House
   mutate(
     mean_household_age = if_else(is.na(mean_household_age), mean(mean_household_age, na.rm = T), mean_household_age)
   ) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO,
     mean_household_age,
     num_ppl_household)
@@ -84,8 +98,12 @@ household <- readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/Cohort_House
 ## Clinical characteristics
 
 # QCovid risk groups
+# This contains records for everyone who either does have a QCovid risk group,
+# or *could* have one, but their value is missing.
+# Note n_risk_gps counts clinical risk groups, but does not count BMI, ethnicity, 
+# learning category and housing category
 qcovid_rg <- readRDS(paste0(Location, "EAVE/GPanalysis/data/cleaned_data/QCOVID_feb22.rds")) %>%
-  select(-Age, -Sex) %>%
+  dplyr::select(-Age, -Sex) %>%
   mutate(Q_BMI = as.numeric(Q_BMI)) %>%
   # Im taking 10 to be the lowest feasible human BMI, and 100 the largest
   # There are lots of odd values for BMI, which probably happens because issues
@@ -117,19 +135,19 @@ qcovid_rg <- readRDS(paste0(Location, "EAVE/GPanalysis/data/cleaned_data/QCOVID_
     )
   ) %>%
   # Drop diabetes 1 and 2 cateogries because they are not useable
-  select(-Q_DIAG_DIABETES_1, -Q_DIAG_DIABETES_2)
+  dplyr::select(-Q_DIAG_DIABETES_1, -Q_DIAG_DIABETES_2)
 
 # Get old QCovid risk groups. We will use this for diabetes only, because diabetes grouping
 # from more recent QCovid extract are not useable
-qcovid_diabetes <- readRDS("/conf/EAVE/GPanalysis/progs/CR/Vaccine/output/temp/Qcovid.rds") %>%
-  select(EAVE_LINKNO, Q_DIAG_DIABETES_1, Q_DIAG_DIABETES_2)
+qcovid_diabetes <- readRDS(paste0(Location, "EAVE/GPanalysis/progs/CR/Vaccine/output/temp/Qcovid.rds")) %>%
+  dplyr::select(EAVE_LINKNO, Q_DIAG_DIABETES_1, Q_DIAG_DIABETES_2)
 
 qcovid_rg <- left_join(qcovid_rg, qcovid_diabetes)
 
 # Blood pressure and smoking status
 eave_rg <- readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/CR_Cohort_RG_EAVE_BP_Smoke.rds")) %>%
   filter(!duplicated(EAVE_LINKNO)) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO,
     smoking_status = EAVE_Smoking_Status_Worst,
     blood_pressure = EAVE_BP
@@ -146,11 +164,30 @@ eave_rg <- readRDS(paste0(Location, "EAVE/GPanalysis/outputs/temp/CR_Cohort_RG_E
     blood_pressure = fct_relevel(blood_pressure, "Normal", "Low", "High", "Very high")
   )
 
+# Ethnicity
+ethnicity = readRDS(paste0(Location, "EAVE/GPanalysis/data/lookups/EAVE_Ethnicity_2022.rds")) %>%
+  mutate(
+    ethnicity_18cat = factor(ethnic_code_desc),
+    ethnicity_5cat = case_when(
+      ethnicity_18cat %in% c("Irish", "Other British", "Other white ethnic group", "Polish", "Scottish") ~ 'White',
+      ethnicity_18cat %in% c("African, African Scottish or African British", "Caribbean or Black", "Other African") ~ 'Black',
+      ethnicity_18cat %in% c("Bangladeshi, Bangladeshi Scottish or Bangladeshi British",
+                              "Chinese, Chinese Scottish or Chinese British",
+                              "Indian, Indian Scottish or Indian British",
+                              "Pakistani, Pakistani Scottish or Pakistani British",
+                              "Other Asian Asian Scottish or Asian British") ~ 'Asian',
+      ethnicity_18cat == "Any mixed or multiple ethnic groups" ~ "Mixed",
+      ethnicity_18cat %in% c("Gypsy/ Traveller", "Other ethnic group", "Arab, Arab Scottish or Arab British") ~ 'Other'
+    ) %>% 
+      factor
+  ) %>%
+  dplyr::select(-ethnic_code, -ethnic_code_desc)
+
 
 ## Tests
 # PCR
 cdw <- readRDS(paste0(Location, "EAVE/GPanalysis/data/CDW_full.rds")) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO,
     specimen_date = date_ecoss_specimen,
     test_result) %>%
@@ -164,7 +201,7 @@ cdw <- readRDS(paste0(Location, "EAVE/GPanalysis/data/CDW_full.rds")) %>%
 all_deaths <- readRDS(paste0(Location, "EAVE/GPanalysis/data/all_deaths.rds")) %>%
   rowwise() %>%
   mutate(covid_death = ifelse(rowSums(across(UNDERLYING_CAUSE_OF_DEATH:CAUSE_OF_DEATH_CODE_9, ~ .x %in% c("U071", "U072")), na.rm = T) > 0, 1, 0)) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO,
     death_date = NRS.Date.Death,
     covid_death) 
@@ -172,14 +209,14 @@ all_deaths <- readRDS(paste0(Location, "EAVE/GPanalysis/data/all_deaths.rds")) %
 
 ## Hospitalisations
 all_hospitalisations <- readRDS(paste0(Location, "EAVE/GPanalysis/data/automated_any_hospitalisation_post_01022020.rds")) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO,
     hosp_date = admission_date)
 
 
 # SMR - Scottish morbidity record
 smr <- readRDS(paste0(Location, "EAVE/GPanalysis/data/SMR01_allstays.rds")) %>%
-  select(
+  dplyr::select(
     EAVE_LINKNO,
     hosp_date = ADMISSION_DATE,
     covid_main_diag_admit,
@@ -192,28 +229,27 @@ smr <- readRDS(paste0(Location, "EAVE/GPanalysis/data/SMR01_allstays.rds")) %>%
 source(paste0(Location, "EAVE/GPanalysis/progs/Data_Cleaning/00_Read_DV_Vaccinations_Dose5.R")) 
 
 Vaccinations <- Vaccinations %>%
-  filter(flag_incon == 0) %>%
   rename(vacc_type_1 = vacc_type) %>%
-  select(-patient_sex, 
+  dplyr::select(-patient_sex, 
          -age, 
-         -flag_incon, 
-         -flag_incon_date, 
          -vacc_booster,
          -vacc_4_booster, 
          -vacc_5_booster, 
          -vacc_wb_booster)
-  
+###KIRSTY: Some vaccines after 5/9/22 are coming up as dose 4 or 5 rather than winter booster, but not sure that matters for this work if it is just being used as a censor date  
+###KIRSTY: There are still some people with inconsistant records (dose 1 and 3 but no 2) 
 
+  
 ## Shielding
 ever_shielding <- readRDS(paste0(Location, "/EAVE/GPanalysis/data/cleaned_data/C19vaccine_dvprod_cleaned_incl_cohorts_20220926.rds")) %>%
-  select(EAVE_LINKNO, shielding) %>%
+  dplyr::select(EAVE_LINKNO, shielding) %>%
   arrange(EAVE_LINKNO, desc(shielding)) %>%
   filter(!duplicated(EAVE_LINKNO))
 
 
 ## Whole genome sequencing
 wgs <- readRDS(paste0(Location, "EAVE/GPanalysis/data/WGS_latest.rds")) %>%
-  select(
+  dplyr::select(
      EAVE_LINKNO,
      specimen_date = Collection_Date,
      lineage)
