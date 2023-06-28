@@ -393,7 +393,7 @@ d_study_weeks <- seq(
 
 d_dummy_weeks <- expand_grid(
   age_4cat = sort(unique(df_cohort$age_4cat)),
-  dose_num = c("1", "2", "3", "4"),
+  dose_num = c("1", "2", "3", "4", "5"),
   dose_week = d_study_weeks
 )
 
@@ -404,10 +404,11 @@ d_vacc_week <-
     `1` = date_vacc_1,
     `2` = date_vacc_2,
     `3` = date_vacc_3,
-    `4` = date_vacc_4
+    `4` = date_vacc_4,
+    `5` = date_vacc_5
   ) %>%
   pivot_longer(
-    cols           = c("1", "2", "3", "4"),
+    cols           = c("1", "2", "3", "4", "5"),
     names_to       = "dose_num",
     values_to      = "dose_date",
     values_drop_na = TRUE

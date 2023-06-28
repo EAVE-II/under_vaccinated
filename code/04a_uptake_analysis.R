@@ -88,6 +88,9 @@ lr_analysis = function(df_cohort, age_group, dep_var, ind_vars, exclude_non_unit
   
   # Results table
   write.csv(create_logistic_results_table(df_cohort, model, dep_var, ind_vars), paste0(dir, "/results.csv"), row.names = FALSE)
+  
+  # Variance inflation factor, for testing collinearity
+  write.csv(vif(model), paste0(dir, "/vif.csv"))
 }
 
 
@@ -194,7 +197,7 @@ lr_ind_vars_extended = c(
   "health_board", 
   "urban_rural_2cat", 
   "simd2020_sc_quintile",
-  "bmi_imputed_cat",
+  #"bmi_imputed_cat",
   "n_risk_gps_6cat",
   "n_risk_gps_3cat",
   "last_positive_test_group")

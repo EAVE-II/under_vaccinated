@@ -10,6 +10,9 @@ library(survival)
 library(lubridate)
 library(broom)
 library(survey)
+library(survminer)
+library(gridExtra)
+library(car)
 
 setwd("/conf/EAVE/GPanalysis/analyses/under_vaccinated")
 
@@ -69,7 +72,12 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     study_end = study_end)
 
   # Relevel vaccination status factor
-  if (age_group %in% c("5-15", "16-74") & 'num_doses_time_2' %in% ind_vars) {
+  if (age_group == "5-15" & 'num_doses_time_2' %in% ind_vars) {
+    df_survival = df_survival %>% 
+      mutate(
+        num_doses_time_2 = fct_relevel(num_doses_time_2, "2+", "0", "1")
+      )
+  } else if (age_group == "16-74" & 'num_doses_time_2' %in% ind_vars) {
     df_survival = df_survival %>% 
       mutate(
         num_doses_time_2 = fct_relevel(num_doses_time_2, "3+", "0", "1", "2")
@@ -102,6 +110,21 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
   
   formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(ind_vars, collapse = " + ") ))
   
+  if ('under_vaccinated_time' %in% ind_vars){
+    dose_time_var = "under_vaccinated_time"
+    
+    plot = labs(color = "Vaccination status", fill = "Vaccination status")
+  } else if (age_group == 'all'){
+    dose_time_var = "num_doses_time_3"
+    
+    plot = labs(color = "Number of doses", fill = "Number of doses") 
+  } else {
+    dose_time_var = "num_doses_time_2"
+    
+    plot = labs(color = "Number of doses", fill = "Number of doses") 
+  }
+  
+  
   if (exclude_non_unit_weight){
     
     dir = paste0(dir, "_weight1")
@@ -111,7 +134,8 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     
     df_survival = filter(df_survival, eave_weight == 1)
     
-    model = coxph(formula, data = df_survival)
+    model_adj = coxph(formula, data = df_survival)
+    model_unadj = coxph(as.formula(paste0("Surv(tstart, tstop, event) ~ ", dose_time_var)), data = df_survival)
   } else if (weight){
     
     dir = paste0(dir, "_weighted")
@@ -136,64 +160,127 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
     
     # Robust standard errors are used by default if weights are not all equal to 1
-    model = coxph(formula, data = df_survival, weights = eave_weight)
+    model_adj = coxph(formula, data = df_survival, weights = eave_weight)
+    model_unadj = coxph(as.formula(paste0("Surv(tstart, tstop, event) ~ ", dose_time_var)), data = df_survival, weights = eave_weight)
   } else {
     
     if (!dir.exists(dir)) {
       dir.create(dir)
     }
     
-    model = coxph(formula, data = df_survival)
+    model_adj = coxph(formula, data = df_survival)
+    model_unadj = coxph(as.formula(paste0("Surv(tstart, tstop, event) ~ ", dose_time_var)), data = df_survival)
   }
 
-  
+  # Unadjusted
   # Results table
-  write.csv(create_cox_results_table(df_survival, model, ind_vars), paste0(dir, "/results.csv"), row.names = FALSE)
-
+  write.csv(create_cox_results_table(df_survival, model_unadj, dose_time_var), paste0(dir, "/results_unadj.csv"), row.names = FALSE)
+  
+  # Adjusted
+  # Results table
+  write.csv(create_cox_results_table(df_survival, model_adj, ind_vars), paste0(dir, "/results_adj.csv"), row.names = FALSE)
   # Coefficients
-  coef = data.frame("variable" = names(coef(model)), "coef" = coef(model), row.names = 1:length(coef(model)))
+  coef = data.frame("variable" = names(coef(model_adj)), "coef" = coef(model_adj), row.names = 1:length(coef(model_adj)))
   write.csv(coef, paste0(dir, "/coef.csv"), row.names = FALSE)
-
   # Covariance matrix
-  cov = vcov(model)
+  cov = vcov(model_adj)
   write.csv(cov, paste0(dir, "/cov.csv"))
   
-  # OE analysis
-  write.csv(OE_analysis(model, df_survival), paste0(dir, "/OE_analysis.csv"))
-  
+  # Schoenfeld residuals
+  # In tryCatch because sometimes the smoothing algorithm doesn't converge
+  tryCatch(
+    {
+      ph_test = cox.zph(model_adj)
+      df = data.frame(
+        print(ph_test )
+      )
+      write.csv(df, paste0(dir, "/ph_test.csv"))
+      #pdf(paste0(dir, "/ggcoxzph.pdf"))
+      
+      #plot_ph = ggcoxzph(ph_test )
+      #dev.off()
+      #ggsave(paste0(dir, "/ggcoxzph.pdf"), arrangeGrob(grobs = plot_ph))
+      
+      resid = data.frame(
+        trans_time = ph_test$x,
+        time = ph_test$time,
+        ph_test$y
+      ) %>% 
+        pivot_longer(
+          cols = c(-trans_time, -time)
+        ) 
+      
+      resid$name =names_map[resid$name]
+      
+      resid %>% 
+        ggplot(aes(
+          x = trans_time,
+          y = value
+        )) +
+        facet_wrap(~name) +
+        geom_smooth()
+
+      ggsave(paste0(dir, "/schoenfeld_resid.png"))
+    },
+    error = function(e) {
+      cat("ERROR :", conditionMessage(e), "\n")
+    }
+  )
+ 
+  # Cumulative incidence curve
   if ('under_vaccinated_time' %in% ind_vars){
-    dose_time_var = "under_vaccinated_time"
-    
-    plot = labs(color = "Vaccination status", fill = "Vaccination status")
-  } else if (age_group == 'all'){
-    dose_time_var = "num_doses_time_3"
-    
-    plot = labs(color = "Number of doses", fill = "Number of doses") 
+    CI_table = survfit(
+      as.formula("Surv(duration, event) ~ under_vaccinated_time"),
+      # Reset the origin to take account of time
+      # That is, e.g. for dose 1 we start the clock at 0 on the day they received their dose
+      # Then when they receive dose 2, we restrart the clock again at 0
+      # Necessary to do it this way rather than just using the duration column
+      # because they could have other time-dependent variables
+      data = df_survival %>%
+        group_by(individual_id, under_vaccinated_time) %>%
+        mutate(
+          offset = min(tstart),
+          tstart = tstart - offset,
+          tstop = tstop - offset
+        ) %>%
+        select(-offset) %>%
+        ungroup() %>%
+        droplevels()
+    )
   } else {
-    dose_time_var = "num_doses_time_2"
-    
-    plot = labs(color = "Number of doses", fill = "Number of doses") 
+    CI_table = survfit(
+      as.formula("Surv(duration, event) ~ under_vaccinated_time"),
+      # Reset the origin to take account of time
+      # That is, e.g. for dose 1 we start the clock at 0 on the day they received their dose
+      # Then when they receive dose 2, we restrart the clock again at 0
+      # Necessary to do it this way rather than just using the duration column
+      # because they could have other time-dependent variables
+      data = df_survival %>%
+        mutate(
+          
+          under_vaccinated_time = case_when(
+            age_3cat == '5-15' & !!sym(dose_time_var) == '2+' ~ 'fully_vaccinated',
+            age_3cat == '5-15' ~ 'under_vaccinated',
+            age_3cat == '16-74' & !!sym(dose_time_var) == '3+' ~ 'fully_vaccinated',
+            age_3cat == '16-74' ~ 'under_vaccinated',
+            age_3cat == '75+' & !!sym(dose_time_var) == '4+' ~ 'fully_vaccinated',
+            age_3cat == '75+' ~ 'under_vaccinated',
+            
+          )
+        ) %>%
+        group_by(individual_id, under_vaccinated_time) %>%
+        mutate(
+          offset = min(tstart),
+          tstart = tstart - offset,
+          tstop = tstop - offset
+        ) %>%
+        select(-offset) %>%
+        ungroup() %>%
+        droplevels()
+    )
   }
   
-  # Cumulative incidence curve
-  plot = survfit(
-    as.formula(paste0("Surv(duration, event) ~", dose_time_var)),
-   # Reset the origin to take account of time
-   # That is, e.g. for dose 1 we start the clock at 0 on the day they received their dose
-   # Then when they receive dose 2, we restrart the clock again at 0
-   # Necessary to do it this way rather than just using the duration column
-   # because they could have other time-dependent variables
-   data = df_survival %>%
-     group_by(individual_id, !!sym(dose_time_var)) %>%
-     mutate(
-       offset = min(tstart),
-       tstart = tstart - offset,
-       tstop = tstop - offset
-     ) %>%
-     select(-offset) %>%
-     ungroup() %>%
-     droplevels()
-  ) %>%
+  CI_table = CI_table %>%
     tidy() %>%
     mutate(
       strata = gsub("num_doses_time_2=0", "0", strata),
@@ -216,16 +303,46 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
       
       strata = gsub("under_vaccinated_time=under_vaccinated", "Under-vaccinated", strata),
       strata = gsub("under_vaccinated_time=fully_vaccinated", "Fully-vaccinated", strata)
-    ) %>%
+    ) 
+  
+  CI_table %>%
     ggplot(aes(x = time, y = 1 - estimate, colour = strata, fill = strata)) +
     geom_line() +
     geom_ribbon(aes(ymin = 1 - conf.high, ymax = 1 - conf.low), linetype = 2, alpha = 0.1) +
     xlab("Time (days)") +
     ylab("Cumulative incidence") +
-    theme_bw() + 
-    plot
+    theme_bw() 
   
   ggsave(paste0(dir, "/cumulative_incidence.png"))
+  
+  CI_table = CI_table %>%
+    mutate(
+      week = floor(time/7)
+    ) %>%
+    group_by(week) %>%
+    mutate(
+      n.risk = sum(n.risk),
+      n.event = sum(n.event)
+    ) %>%
+    select(
+      week, strata, n.risk, n.event
+    ) %>%
+    unique()
+  
+  write.csv(CI_table, paste0(dir, "/CI_table.csv"))
+  
+  # OE analysis
+  #write.csv(OE_analysis(model, df_survival, age_group), paste0(dir, "/OE_analysis.csv"))
+  
+  # Variance inflation factor, for testing collinearity
+  tryCatch(
+    {
+      write.csv(vif(model_adj), paste0(dir, "/vif.csv"))
+    },
+    error = function(e) {
+      cat("ERROR :", conditionMessage(e), "\n")
+    }
+  )
 }
 
 
@@ -302,7 +419,8 @@ create_df_survival = function(df, event_col, ind_vars, calendar_days, study_star
       mutate(num_doses_time = strtoi(str_sub(vs_time, -1, -1))) %>%
       mutate(
         num_doses_time_2 = case_when(
-          age_3cat %in% c("5-15", "16-74") & num_doses_time >= 3 ~ "3+",
+          age_3cat == "5-15" & num_doses_time >= 2 ~ "2+",
+          age_3cat =="16-74" & num_doses_time >= 3 ~ "3+",
           age_3cat == "75+" & num_doses_time >= 4 ~ "4+",
           TRUE ~ as.character(num_doses_time)
         ),
@@ -440,73 +558,63 @@ create_cox_results_table = function(df_survival, model, ind_vars) {
 
 # Observed-expected calculations where expected is a fully vaccinated
 # counterfactual
-OE_analysis = function(model, df_survival){
+OE_analysis = function(model, df_survival, age_group){
+
+  under_vacc = df_survival %>%
+    filter(under_vaccinated == 1, !duplicated(individual_id))
   
-  observed = sum(df_survival$event)
-  observed_sd = sqrt(observed)
+  if (age_group %in% c('5-15', '16-74')){
+    under_vacc = under_vacc %>%
+      mutate(
+        num_doses_time_2 = case_when(
+          age_4cat == '5-11' ~ '1',
+          age_4cat == '12-15' ~ '2',
+          age_4cat == '16-74' ~ '3+'
+        ) %>% factor(levels = c('0', '1', '2', '3+', '4+')),
+        tstart = 0,
+        tstop = 121
+      )
+  } else if (age_group %in% c('75+')){
+    under_vacc = under_vacc %>%
+      mutate(
+        num_doses_time_2 = case_when(
+          age_4cat == '5-11' ~ '1',
+          age_4cat == '12-15' ~ '2',
+          age_4cat == '16-74' ~ '3',
+          age_4cat == '75+' ~ '4'
+        ) %>% factor(levels = c('0', '1', '2', '3', '4+')),
+        tstart = 0,
+        tstop = 121
+      )
+    
+  }
   
-  pred = predict(
-    model, 
-    type = 'expected', 
-    se.fit = TRUE)
-  
-  expected = sum(pred[['fit']], na.rm = TRUE)
-  expected_sd = sqrt(sum(pred[['se.fit']]^2, na.rm = TRUE)) + sqrt(expected)
-  
+  observed = sum(under_vacc$event)
+
   fully_vacc_pred = predict(
-    model, 
-    df_survival %>%
-      mutate(under_vaccinated_time = 'fully_vaccinated'),
+    model,
+    newdata = under_vacc, 
     type = 'expected', 
     se.fit = TRUE)
   
   expected_fully_vacc = sum(fully_vacc_pred[['fit']], na.rm = TRUE)
-  expected_fully_vacc_sd = sqrt(sum(fully_vacc_pred[['se.fit']]^2, na.rm = TRUE)) + sqrt(expected_fully_vacc)
-  
-  undervacc_observed = df_survival %>%
-    filter(under_vaccinated_time == 'under_vaccinated') %>%
-    pull(event) %>%
-    sum()
-  
-  delta_hr_approximation = (1 - 1/exp(model$coefficients['under_vaccinated_timeunder_vaccinated'])) * undervacc_observed
-  beta_var = vcov(model)['under_vaccinated_timeunder_vaccinated', 'under_vaccinated_timeunder_vaccinated']
-  
-  delta_hr_approximation_upper95 = (1 - 1/exp(model$coefficients['under_vaccinated_timeunder_vaccinated'] + 
-                                       1.96 * sqrt(beta_var))) * undervacc_observed
-  delta_hr_approximation_lower95 = (1 - 1/exp(model$coefficients['under_vaccinated_timeunder_vaccinated'] - 
-                                       1.96 * sqrt(beta_var))) * undervacc_observed
+  expected_fully_vacc_sd = sqrt(sum(fully_vacc_pred[['se.fit']]^2, na.rm = TRUE))
   
   df = data.frame(
-    observed = observed,
-    observed_sd = observed_sd,
-    
-    expected = expected,
-    expected_sd = expected_sd,
-    
-    expected_fully_vacc = expected_fully_vacc,
-    expected_fully_vacc_sd = expected_fully_vacc_sd,
-    
-    delta_hr_approximation = delta_hr_approximation) %>%
-    mutate(
-      delta_hr_approximation_lower95 = delta_hr_approximation_lower95,
-      delta_hr_approximation_upper95 = delta_hr_approximation_upper95,
-      
-      delta = expected - expected_fully_vacc,
-      delta_sd = sqrt( (expected_sd^2 + expected_fully_vacc_sd^2))
-    ) %>%
-  mutate(
-      delta_upper95 = delta + 1.96 * delta_sd,
-      delta_lower95 = delta - 1.96 * delta_sd,
-    )
+    reduction = observed - expected_fully_vacc,
+    reduction_lower_95_ci = observed - (expected_fully_vacc + 1.96 * expected_fully_vacc_sd),
+    reduction_upper_95_ci = observed - (expected_fully_vacc - 1.96 * expected_fully_vacc_sd)
+  )
 }
 
 
 #### Severe outcomes analysis
 
 cox_ind_vars_extended = c(
+  "num_doses_time_2",
   "sex",
   "age_17cat",
-  "bmi_imputed_cat",
+  #"bmi_imputed_cat",
   "urban_rural_2cat",
   "simd2020_sc_quintile",
   "ethnicity_5cat",
@@ -519,19 +627,20 @@ cox_ind_vars_extended = c(
   "num_tests_6m_group",
   "num_pos_tests_6m_group",
   "covid_mcoa_hosp_ever",
-  "competing_hosp",
-  "under_vaccinated_time"
+  "competing_hosp"
+  #"under_vaccinated_time"
 )
 
 cox_ind_vars_minimal = c(
+  "num_doses_time_2",
   "sex",
   "age_17cat",
   "urban_rural_2cat",
   "simd2020_sc_quintile",
   "ethnicity_5cat",
   "n_risk_gps_6cat",
-  "n_risk_gps_3cat",
-  "under_vaccinated_time"
+  "n_risk_gps_3cat"
+  #"under_vaccinated_time"
 )
 
 var_list = list(
@@ -539,7 +648,7 @@ var_list = list(
   "extended" = cox_ind_vars_extended)
 
 endpoint_names = c(
-  #"covid_death", 
+  "covid_death", 
   
   #"covid_acoa_hosp",
   #"covid_mcoa_hosp",
@@ -549,7 +658,7 @@ endpoint_names = c(
   #"covid_acoa_hosp_death",
   
   #"covid_acoa_emerg_hosp",
-  #"covid_mcoa_emerg_hosp",
+  "covid_mcoa_emerg_hosp",
   # "covid_mcoa_28_2_emerg_hosp",
   # "covid_mcoa_14_2_emerg_hosp",
   "covid_mcoa_emerg_hosp_death"
@@ -601,18 +710,17 @@ for (dep_var in endpoint_names) {
 
 
 #### Tests
-
+# 
 # df_cohort_test = df_cohort %>%
 #   filter(age_3cat == "16-74", flag_incon_date == 0, incon_timing == 0)
 # df_cohort_test = filter(df_cohort_test, individual_id %in% sample(df_cohort_test$individual_id, 100000)) %>%
 #   droplevels()
 # 
 # df_survival = create_df_survival(df_cohort_test,
-#   event_col = "covid_mcoa_hosp", ind_vars = cox_ind_vars_extended, calendar_days = 0, study_start = study_start, study_end = study_end
+#   event_col = "covid_mcoa_hosp", ind_vars = cox_ind_vars_minimal, calendar_days = 0, study_start = study_start, study_end = study_end
 # )
 # 
 # # Check everything is ok - verify that bob is indeed one's uncle
-# 
 # bob = select(
 #   df_survival, individual_id, age_3cat,
 # 
@@ -643,11 +751,12 @@ for (dep_var in endpoint_names) {
 # 
 # 
 #   competing_hosp, event, surv_date,
-#   tstart, tstop, duration, under_vaccinated_time
+#   tstart, tstop, duration,  num_doses_time_2
 # )
 # 
+# formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(cox_ind_vars_extended, collapse = " + ")))
+# 
 # # Weighted Cox model
-# # formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(cox_ind_vars_full, collapse = " + ")))
 # #
 # # survey_design = svydesign(
 # #   id = ~1,
@@ -664,7 +773,7 @@ for (dep_var in endpoint_names) {
 # #
 # # model = coxph(formula, data = df_survival, weights = eave_weight)
 # 
-# model = coxph(formula, data = df_survival)
+# model = coxph(formula, data = df_survival, model = TRUE)
 # 
 # results_table = create_cox_results_table(df_survival, model, cox_ind_vars_full)
 # 
