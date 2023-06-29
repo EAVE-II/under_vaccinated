@@ -89,6 +89,9 @@ lr_analysis = function(df_cohort, age_group, dep_var, ind_vars, exclude_non_unit
   # Results table
   write.csv(create_logistic_results_table(df_cohort, model, dep_var, ind_vars), paste0(dir, "/results.csv"), row.names = FALSE)
   
+  # Model performance metrics
+  write.csv(broom::glance(model), paste0(dir, "/perf_metrics.csv"))
+  
   # Variance inflation factor, for testing collinearity
   write.csv(vif(model), paste0(dir, "/vif.csv"))
 }

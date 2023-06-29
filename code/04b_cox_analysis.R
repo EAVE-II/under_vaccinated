@@ -34,6 +34,7 @@ names_map["shielding"] = "Ever shielding"
 names_map["other_household_shielding"] = "Other household member ever shielding"
 names_map["num_doses_time_2"] = "Number of doses"
 names_map["num_doses_time_3"] = "Number of doses"
+names_map["vacc_deficit_time"] = "Vaccine deficit"
 names_map["under_vaccinated_time"] = "Vaccination status"
 names_map["age_17cat"] = "Age group"
 names_map["covid_mcoa_hosp_ever"] = "Previous COVID-19 hospitalisation"
@@ -73,12 +74,12 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
 
   # Relevel vaccination status factor
   if (age_group == "5-15" & 'num_doses_time_2' %in% ind_vars) {
-    df_survival = df_survival %>% 
+    df_survival = df_survival %>%
       mutate(
         num_doses_time_2 = fct_relevel(num_doses_time_2, "2+", "0", "1")
       )
   } else if (age_group == "16-74" & 'num_doses_time_2' %in% ind_vars) {
-    df_survival = df_survival %>% 
+    df_survival = df_survival %>%
       mutate(
         num_doses_time_2 = fct_relevel(num_doses_time_2, "3+", "0", "1", "2")
     )
@@ -95,12 +96,12 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
   }
   
   # Relevel age group for children and elderly
-  if (age_group %in% c("5-15") & 'num_doses_time_2' %in% ind_vars) {
+  if (age_group %in% c("5-15")) {
     df_survival = df_survival %>% 
       mutate(
         age_17cat = fct_relevel(age_17cat, "5-11")
       )
-  } else if (age_group == "75+" & 'num_doses_time_2' %in% ind_vars){
+  } else if (age_group == "75+"){
     df_survival = df_survival %>% 
       mutate(
         age_17cat = fct_relevel(age_17cat, "75-79")
@@ -118,10 +119,14 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     dose_time_var = "num_doses_time_3"
     
     plot = labs(color = "Number of doses", fill = "Number of doses") 
-  } else {
+  } else if ('num_doses_time_2' %in% ind_vars){
     dose_time_var = "num_doses_time_2"
     
     plot = labs(color = "Number of doses", fill = "Number of doses") 
+  } else if ('vacc_deficit_time' %in% ind_vars){
+    dose_time_var = "vacc_deficit_time"
+    
+    plot = labs(color = "Vaccine deficit", fill = "Vaccine deficit") 
   }
   
   
@@ -186,6 +191,9 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
   cov = vcov(model_adj)
   write.csv(cov, paste0(dir, "/cov.csv"))
   
+  # Model performance metrics
+  write.csv(broom::glance(model_adj), paste0(dir, "/perf_metrics.csv"))
+  
   # Schoenfeld residuals
   # In tryCatch because sometimes the smoothing algorithm doesn't converge
   tryCatch(
@@ -227,8 +235,8 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     }
   )
  
-  # Cumulative incidence curve
-  if ('under_vaccinated_time' %in% ind_vars){
+  #Cumulative incidence curve
+
     CI_table = survfit(
       as.formula("Surv(duration, event) ~ under_vaccinated_time"),
       # Reset the origin to take account of time
@@ -246,41 +254,7 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
         select(-offset) %>%
         ungroup() %>%
         droplevels()
-    )
-  } else {
-    CI_table = survfit(
-      as.formula("Surv(duration, event) ~ under_vaccinated_time"),
-      # Reset the origin to take account of time
-      # That is, e.g. for dose 1 we start the clock at 0 on the day they received their dose
-      # Then when they receive dose 2, we restrart the clock again at 0
-      # Necessary to do it this way rather than just using the duration column
-      # because they could have other time-dependent variables
-      data = df_survival %>%
-        mutate(
-          
-          under_vaccinated_time = case_when(
-            age_3cat == '5-15' & !!sym(dose_time_var) == '2+' ~ 'fully_vaccinated',
-            age_3cat == '5-15' ~ 'under_vaccinated',
-            age_3cat == '16-74' & !!sym(dose_time_var) == '3+' ~ 'fully_vaccinated',
-            age_3cat == '16-74' ~ 'under_vaccinated',
-            age_3cat == '75+' & !!sym(dose_time_var) == '4+' ~ 'fully_vaccinated',
-            age_3cat == '75+' ~ 'under_vaccinated',
-            
-          )
-        ) %>%
-        group_by(individual_id, under_vaccinated_time) %>%
-        mutate(
-          offset = min(tstart),
-          tstart = tstart - offset,
-          tstop = tstop - offset
-        ) %>%
-        select(-offset) %>%
-        ungroup() %>%
-        droplevels()
-    )
-  }
-  
-  CI_table = CI_table %>%
+    ) %>%
     tidy() %>%
     mutate(
       strata = gsub("num_doses_time_2=0", "0", strata),
@@ -291,7 +265,7 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
       strata = gsub("num_doses_time_2=5", "5", strata),
       strata = gsub("num_doses_time_2=3+", "3+", strata),
       strata = gsub("num_doses_time_2=3+", "4+", strata),
-      
+
       strata = gsub("num_doses_time_3=0", "0", strata),
       strata = gsub("num_doses_time_3=1", "1", strata),
       strata = gsub("num_doses_time_3=2", "2", strata),
@@ -300,21 +274,22 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
       strata = gsub("num_doses_time_3=5", "5", strata),
       strata = gsub("num_doses_time_3=3+", "3+", strata),
       strata = gsub("num_doses_time_3=3+", "4+", strata),
-      
+
       strata = gsub("under_vaccinated_time=under_vaccinated", "Under-vaccinated", strata),
       strata = gsub("under_vaccinated_time=fully_vaccinated", "Fully-vaccinated", strata)
-    ) 
-  
-  CI_table %>%
-    ggplot(aes(x = time, y = 1 - estimate, colour = strata, fill = strata)) +
-    geom_line() +
-    geom_ribbon(aes(ymin = 1 - conf.high, ymax = 1 - conf.low), linetype = 2, alpha = 0.1) +
-    xlab("Time (days)") +
-    ylab("Cumulative incidence") +
-    theme_bw() 
-  
-  ggsave(paste0(dir, "/cumulative_incidence.png"))
-  
+    )
+
+  # CI_table %>%
+  #   ggplot(aes(x = time, y = 1 - estimate, colour = strata, fill = strata)) +
+  #   geom_line() +
+  #   geom_ribbon(aes(ymin = 1 - conf.high, ymax = 1 - conf.low), linetype = 2, alpha = 0.1) +
+  #   xlab("Time (days)") +
+  #   ylab("Cumulative incidence") +
+  #   theme_bw() + 
+  #   plot
+  # 
+  # ggsave(paste0(dir, "/cumulative_incidence.png"))
+
   CI_table = CI_table %>%
     mutate(
       week = floor(time/7)
@@ -328,7 +303,7 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
       week, strata, n.risk, n.event
     ) %>%
     unique()
-  
+
   write.csv(CI_table, paste0(dir, "/CI_table.csv"))
   
   # OE analysis
@@ -392,7 +367,7 @@ create_df_survival = function(df, event_col, ind_vars, calendar_days, study_star
   }
   
   # Add vaccination dose number as time-dependent variable
-  if (any(c('num_doses_time_2', 'num_doses_time_3') %in% ind_vars)){
+  if (any(c('num_doses_time_2', 'num_doses_time_3', 'vacc_deficit_time') %in% ind_vars)){
   
     # dataframe of start times for different vaccination status
     df_vs = select(df, individual_id, date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5) %>%
@@ -427,13 +402,37 @@ create_df_survival = function(df, event_col, ind_vars, calendar_days, study_star
         num_doses_time_3 = case_when(
           num_doses_time >= 4 ~ "4+",
           TRUE ~ as.character(num_doses_time)  
+        ),
+        vacc_deficit_time = case_when(
+          age_4cat == "5-11" ~ pmax(1-num_doses_time, 0),
+          age_4cat == "12-15" ~ pmax(2-num_doses_time, 0),
+          age_4cat == "16-74" ~ pmax(3-num_doses_time, 0),
+          age_4cat == "75+" ~ pmax(4-num_doses_time, 0)
+          ),
+        under_vaccinated_time = case_when(
+          age_4cat == "5-11" & num_doses_time >=1 ~ 'fully_vaccinated',
+          age_4cat == "5-11" ~ 'under_vaccinated',
+          
+          age_4cat == "12-15" & num_doses_time >=2 ~ 'fully_vaccinated',
+          age_4cat == "12-15" ~ 'under_vaccinated',
+          
+          age_4cat == "16-74" & num_doses_time >=3 ~ 'fully_vaccinated',
+          age_4cat == "16-74" ~ 'under_vaccinated',
+          
+          age_4cat == "75+" & num_doses_time >=4 ~ 'fully_vaccinated',
+          age_4cat == "75+" ~ 'under_vaccinated'
         )
       ) %>%
-      mutate(num_doses_time_2 = factor(num_doses_time_2)) %>%
+      mutate(
+        under_vaccinated_time = factor(under_vaccinated_time, c("under_vaccinated", "fully_vaccinated")),
+        num_doses_time_2 = factor(num_doses_time_2),
+        num_doses_time_3 = factor(num_doses_time_3),
+        vacc_deficit_time = factor(vacc_deficit_time)
+        ) %>%
       select(-vs_time)
   }
   
-  # Add fully/under vaccinated as time dependent variable
+  
   if ('under_vaccinated_time' %in% ind_vars){
     
     # dataframe of start times for different vaccination status
@@ -611,7 +610,7 @@ OE_analysis = function(model, df_survival, age_group){
 #### Severe outcomes analysis
 
 cox_ind_vars_extended = c(
-  "num_doses_time_2",
+  "vacc_deficit_time",
   "sex",
   "age_17cat",
   #"bmi_imputed_cat",
@@ -632,7 +631,7 @@ cox_ind_vars_extended = c(
 )
 
 cox_ind_vars_minimal = c(
-  "num_doses_time_2",
+  "vacc_deficit_time",
   "sex",
   "age_17cat",
   "urban_rural_2cat",
@@ -648,7 +647,7 @@ var_list = list(
   "extended" = cox_ind_vars_extended)
 
 endpoint_names = c(
-  "covid_death", 
+  #"covid_death", 
   
   #"covid_acoa_hosp",
   #"covid_mcoa_hosp",
@@ -658,7 +657,7 @@ endpoint_names = c(
   #"covid_acoa_hosp_death",
   
   #"covid_acoa_emerg_hosp",
-  "covid_mcoa_emerg_hosp",
+  #"covid_mcoa_emerg_hosp",
   # "covid_mcoa_28_2_emerg_hosp",
   # "covid_mcoa_14_2_emerg_hosp",
   "covid_mcoa_emerg_hosp_death"
@@ -710,19 +709,19 @@ for (dep_var in endpoint_names) {
 
 
 #### Tests
-# 
+
 # df_cohort_test = df_cohort %>%
 #   filter(age_3cat == "16-74", flag_incon_date == 0, incon_timing == 0)
 # df_cohort_test = filter(df_cohort_test, individual_id %in% sample(df_cohort_test$individual_id, 100000)) %>%
 #   droplevels()
 # 
 # df_survival = create_df_survival(df_cohort_test,
-#   event_col = "covid_mcoa_hosp", ind_vars = cox_ind_vars_minimal, calendar_days = 0, study_start = study_start, study_end = study_end
+#   event_col = "covid_mcoa_hosp", ind_vars = cox_ind_vars_extended, calendar_days = 0, study_start = study_start, study_end = study_end
 # )
 # 
 # # Check everything is ok - verify that bob is indeed one's uncle
 # bob = select(
-#   df_survival, individual_id, age_3cat,
+#   df_survival, individual_id, age_3cat, age_4cat,
 # 
 #   # Vaccination variables
 #   date_vacc_1, date_vacc_2, date_vacc_3, date_vacc_4, date_vacc_5,
@@ -751,8 +750,9 @@ for (dep_var in endpoint_names) {
 # 
 # 
 #   competing_hosp, event, surv_date,
-#   tstart, tstop, duration,  num_doses_time_2
+#   tstart, tstop, duration, vacc_deficit_time
 # )
+# 
 # 
 # formula = as.formula(paste0("Surv(tstart, tstop, event) ~ ", paste(cox_ind_vars_extended, collapse = " + ")))
 # 
@@ -775,11 +775,11 @@ for (dep_var in endpoint_names) {
 # 
 # model = coxph(formula, data = df_survival, model = TRUE)
 # 
-# results_table = create_cox_results_table(df_survival, model, cox_ind_vars_full)
+# results_table = create_cox_results_table(df_survival, model, cox_ind_vars_extended)
 # 
 # cox_analysis(df_cohort_test,
 #   age_group = "16-74",
-#   dep_var = "covid_mcoa_hosp",
+#   dep_var = "covid_mcoa_emerg_hosp",
 #   ind_vars = cox_ind_vars_extended,
 #   calendar_days = 0,
 #   study_start,

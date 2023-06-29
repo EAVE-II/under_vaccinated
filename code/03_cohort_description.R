@@ -114,6 +114,27 @@ names_map <- setNames(display_names, var_names)
 
 names_map["n_risk_gps_3cat"] = "Number of risk groups"
 
+
+# Unvaccinated table
+summary_tbl = summary_factorlist(
+  df_cohort %>%
+    mutate(
+      unvaccinated = factor(ifelse(num_doses_start == 0, 'Unvaccinated', 'Vaccinated'))
+    ),
+  dependent = "unvaccinated",
+  explanatory = setdiff(var_names, c("Total N (%)", "Q_ETHNICITY")),
+  add_col_totals = TRUE,
+  na_include = TRUE,
+  column = FALSE
+) 
+
+# Change to display names
+summary_tbl$label =names_map[summary_tbl$label]
+summary_tbl$label =replace_na(summary_tbl$label, "")
+
+write.csv(summary_tbl, paste0(output_dir, "/summary_table_uv.csv"), row.names = F)
+
+
 # Under vaccinated table
 
 summary_tbl =summary_factorlist(
