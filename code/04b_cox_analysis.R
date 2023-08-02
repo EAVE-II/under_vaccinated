@@ -139,8 +139,8 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     
     df_survival = filter(df_survival, eave_weight == 1)
     
-    model_adj = coxph(formula, data = df_survival)
-    model_unadj = coxph(as.formula(paste0("Surv(tstart, tstop, event) ~ ", dose_time_var)), data = df_survival)
+    # model_adj = coxph(formula, data = df_survival)
+    # model_unadj = coxph(as.formula(paste0("Surv(tstart, tstop, event) ~ ", dose_time_var)), data = df_survival)
   } else if (weight){
     
     dir = paste0(dir, "_weighted")
@@ -150,29 +150,29 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     
     # Weighted Cox model
     # Throws errors - not clear why
-    #
+
     # survey_design = svydesign(
     #  id = ~1,
     #  weights = ~ eave_weight,
     #  data = df_survival)
-    #
-    # model = svycoxph( 
+    # 
+    # model = svycoxph(
     #    formula,
     #    design = survey_design,
     #    data = df_survival)
-    
-    # Normalise weight to 1 so standard errors are not distorted
-    df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
+    # 
+    # # Normalise weight to 1 so standard errors are not distorted
+    # df_survival = mutate(df_survival, eave_weight = eave_weight * nrow(df_survival) / sum(eave_weight))
     
     # Robust standard errors are used by default if weights are not all equal to 1
-    model_adj = coxph(formula, data = df_survival, weights = eave_weight)
-    model_unadj = coxph(as.formula(paste0("Surv(tstart, tstop, event) ~ ", dose_time_var)), data = df_survival, weights = eave_weight)
+    # model_adj = coxph(formula, data = df_survival, weights = eave_weight)
+    # model_unadj = coxph(as.formula(paste0("Surv(tstart, tstop, event) ~ ", dose_time_var)), data = df_survival, weights = eave_weight)
   } else {
-    
+
     if (!dir.exists(dir)) {
       dir.create(dir)
     }
-    
+
     model_adj = coxph(formula, data = df_survival)
     model_unadj = coxph(as.formula(paste0("Surv(tstart, tstop, event) ~ ", dose_time_var)), data = df_survival)
   }
@@ -180,7 +180,7 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
   # Unadjusted
   # Results table
   write.csv(create_cox_results_table(df_survival, model_unadj, dose_time_var), paste0(dir, "/results_unadj.csv"), row.names = FALSE)
-  
+
   # Adjusted
   # Results table
   write.csv(create_cox_results_table(df_survival, model_adj, ind_vars), paste0(dir, "/results_adj.csv"), row.names = FALSE)
@@ -190,12 +190,12 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
   # Covariance matrix
   cov = vcov(model_adj)
   write.csv(cov, paste0(dir, "/cov.csv"))
-  
+
   # Model performance metrics
   write.csv(broom::glance(model_adj), paste0(dir, "/perf_metrics.csv"))
-  
-  # Schoenfeld residuals
-  # In tryCatch because sometimes the smoothing algorithm doesn't converge
+
+  #Schoenfeld residuals
+  #In tryCatch because sometimes the smoothing algorithm doesn't converge
   tryCatch(
     {
       ph_test = cox.zph(model_adj)
@@ -204,23 +204,23 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
       )
       write.csv(df, paste0(dir, "/ph_test.csv"))
       #pdf(paste0(dir, "/ggcoxzph.pdf"))
-      
+
       #plot_ph = ggcoxzph(ph_test )
       #dev.off()
       #ggsave(paste0(dir, "/ggcoxzph.pdf"), arrangeGrob(grobs = plot_ph))
-      
+
       resid = data.frame(
         trans_time = ph_test$x,
         time = ph_test$time,
         ph_test$y
-      ) %>% 
+      ) %>%
         pivot_longer(
           cols = c(-trans_time, -time)
-        ) 
-      
+        )
+
       resid$name =names_map[resid$name]
-      
-      resid %>% 
+
+      resid %>%
         ggplot(aes(
           x = trans_time,
           y = value
@@ -234,7 +234,7 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
       cat("ERROR :", conditionMessage(e), "\n")
     }
   )
- 
+
   #Cumulative incidence curve
 
     CI_table = survfit(
@@ -294,20 +294,19 @@ cox_analysis = function(df_cohort, age_group, dep_var, ind_vars, calendar_days, 
     mutate(
       week = floor(time/7)
     ) %>%
-    group_by(week) %>%
+    group_by(week, strata) %>%
     mutate(
-      n.risk = sum(n.risk),
       n.event = sum(n.event)
     ) %>%
     select(
       week, strata, n.risk, n.event
     ) %>%
-    unique()
+    slice(1)
 
   write.csv(CI_table, paste0(dir, "/CI_table.csv"))
   
   # OE analysis
-  #write.csv(OE_analysis(model, df_survival, age_group), paste0(dir, "/OE_analysis.csv"))
+  write.csv(OE_analysis(model, df_survival, age_group), paste0(dir, "/OE_analysis.csv"))
   
   # Variance inflation factor, for testing collinearity
   tryCatch(
